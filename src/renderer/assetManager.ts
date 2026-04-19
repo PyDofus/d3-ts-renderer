@@ -1,0 +1,297 @@
+import {getBoneData} from '../data/boneLoader.js';
+import {getSkin} from '../data/skinLoader.js';
+import type {AnimatedObjectDefinition, Animation, SkinAsset} from '../data/types.js';
+import type {Look} from '../look/look.js';
+import type {RenderState} from '../readers/renderState.js';
+import {type Mat3, mat3Identity} from '../math.js';
+import {
+    type NodeElement,
+    type NodeElementData,
+    type NodeElementGroup,
+    type NodeElementSprite
+} from './nodeStructure.js';
+import {SkinAssetPart} from './skinAssetPart.js';
+import type {RendererContext} from './rendererContext.js';
+import type {DofusSprite} from './dofusSprite.js';
+import {skinSlots} from "../data/skinSlots";
+
+type CustomPart = SkinAssetPart | NodeElementSprite | null;
+type AssetPartResult = [found: boolean, part: CustomPart, isCustomised: boolean];
+
+export abstract class AssetManager {
+    readonly look: Look;
+    readonly openGl: RendererContext;
+
+    data!: AnimatedObjectDefinition;
+    boneAsset!: SkinAsset;
+    animations!: Map<string, Animation>;
+
+    private _textureIndexDict = new Map<string, number>();
+    private _skinsDict = new Map<number, SkinAsset>();
+    private _customSymbolRef = new Map<string, SkinAsset>();
+    private _intendedEmpty = new Set<string>();
+    private _rulesEmpty: ReadonlySet<string> = new Set();
+
+    private _dictPartIndex = new Map<number, SkinAssetPart>();
+    private _dictPartIndexCustom = new Map<string, [CustomPart, boolean]>();
+    private _dictPart = new Map<string, AssetPartResult>();
+    private _processedPart = new Map<string, NodeElement>();
+
+    constructor(look: Look, openGl: RendererContext) {
+        this.look = look;
+        this.openGl = openGl;
+    }
+
+    protected async _init(boneName?: string): Promise<void> {
+        await this._getBone(boneName);
+        await this._getSkinDict();
+        this._getCustomSymbol();
+        this._getEmptyCustomisation();
+        this._rulesEmpty = skinSlots.slotFromBody(this.look.skins, this.look.getBody());
+        this.animations = this._getAnimationDict();
+    }
+
+    // ── Initialisation helpers ────────────────────────────────────────────────────
+
+    protected async _getBone(boneName?: string): Promise<void> {
+        const resolved = boneName ?? (this.look.bone !== 1 ? String(this.look.bone) : '1-static');
+        const {bone, skin} = await getBoneData(resolved);
+        this.data = bone;
+        this.boneAsset = skin.skin;
+        this._loadTextures(skin.images, 'main');
+    }
+
+    private async _getSkinDict(): Promise<void> {
+        await Promise.all(
+            this.look.skins.map(async skinId => {
+                try {
+                    const {skin, images} = await getSkin(skinId);
+                    this._loadTextures(images, String(skinId));
+                    this._skinsDict.set(skinId, skin);
+                } catch {
+                }
+            }),
+        );
+    }
+
+    private _getCustomSymbol(): void {
+        this._customSymbolRef.clear();
+        for (const skin of this._skinsDict.values()) {
+            for (const symbol of skin.m_keys) this._customSymbolRef.set(symbol, skin);
+            for (const empty of skin.emptyCustomisations) this._customSymbolRef.delete(empty);
+        }
+    }
+
+    private _getEmptyCustomisation(): void {
+        this._intendedEmpty.clear();
+        for (const skin of this._skinsDict.values()) {
+            for (const e of skin.emptyCustomisations) this._intendedEmpty.add(e);
+        }
+    }
+
+    private _loadTextures(images: ImageBitmap[], key: string): void {
+        if (key === 'main' && this._textureIndexDict.has('main')) {
+            this.openGl.loadTexture(images[0]!, this._textureIndexDict.get('main'));
+        } else {
+            this._textureIndexDict.set(key, this.openGl.textureCount);
+            for (const img of images) this.openGl.loadTexture(img);
+        }
+    }
+
+    private _getAnimationDict(): Map<string, Animation> {
+        return new Map(this.data.animations.map(a => [a.name, a]));
+    }
+
+    // ── Asset resolution ──────────────────────────────────────────────────────────
+
+    private _getSkinAssetPartByIndex(index: number): SkinAssetPart | null {
+        if (index < 0 || index >= this.data.graphics.length) return null;
+        const cached = this._dictPartIndex.get(index);
+        if (cached) return cached;
+        const graphic = this.data.graphics[index]!;
+        const textureOffset = this._textureIndexDict.get('main')!;
+        const part = new SkinAssetPart(graphic.part, this.boneAsset, textureOffset);
+        this._dictPartIndex.set(index, part);
+        return part;
+    }
+
+    private _getCustomSymbolName(customIndex: number): string | undefined {
+        return this.data.exposedNodeNames[customIndex];
+    }
+
+    protected _getSkinCustomAssetPart(symbolName: string): [CustomPart, boolean] {
+        const cached = this._dictPartIndexCustom.get(symbolName);
+        if (cached) return cached;
+
+        if (this._rulesEmpty.has(symbolName)) {
+            const r: [CustomPart, boolean] = [null, true];
+            this._dictPartIndexCustom.set(symbolName, r);
+            return r;
+        }
+
+        if (symbolName.startsWith('carried_')) {
+            const node = this._getCarriedSubEntityNode(symbolName);
+            if (node) {
+                const r: [CustomPart, boolean] = [node, true];
+                this._dictPartIndexCustom.set(symbolName, r);
+                return r;
+            }
+        } else {
+            const skin = this._customSymbolRef.get(symbolName);
+            if (skin) {
+                const textureOffset = this._textureIndexDict.get(skin.m_Name)!;
+                const stub = skin.m_values[skin.m_keys.indexOf(symbolName)]!;
+                const part = new SkinAssetPart(stub, skin, textureOffset);
+                const r: [CustomPart, boolean] = [part, true];
+                this._dictPartIndexCustom.set(symbolName, r);
+                return r;
+            }
+        }
+
+        const r: [CustomPart, boolean] = [null, this._intendedEmpty.has(symbolName)];
+        this._dictPartIndexCustom.set(symbolName, r);
+        return r;
+    }
+
+    private _getCarriedSubEntityNode(index: string): NodeElementSprite | null {
+        const parts = index.split('_');
+        const category = parseInt(parts[1]!);
+        const subEntityIndex = parts.length > 2 ? parseInt(parts[2]!) : 0;
+        const subLook = this.look.subEntities.get(category)?.get(subEntityIndex);
+        if (!subLook) return null;
+        const sprite = this.getSubEntity(subLook, index);
+        return {sprite, name: index, transformation: null};
+    }
+
+    getSkinAssetPart(node: RenderState): AssetPartResult {
+        if (node.spriteIndex === -1 && node.customisationIndex === -1) return [false, null, false];
+
+        const key = `${Math.max(-2, node.customisationIndex)}:${Math.max(-1, node.spriteIndex)}`;
+        const cached = this._dictPart.get(key);
+        if (cached) return cached;
+
+        let isCustomised = false;
+        let graphic: CustomPart = this._getSkinAssetPartByIndex(node.spriteIndex);
+
+        if (node.customisationIndex !== -1) {
+            if (graphic === null) {
+                const symbolName = this._getCustomSymbolName(node.customisationIndex);
+                if (symbolName) [graphic, isCustomised] = this._getSkinCustomAssetPart(symbolName);
+            } else {
+                [graphic, isCustomised] = this._getSkinCustomAssetPart(graphic.name);
+            }
+        }
+
+        const result: AssetPartResult = graphic === null ? [false, null, isCustomised] : [(graphic instanceof SkinAssetPart ? graphic.validSkinChunk : true), graphic, isCustomised];
+
+        this._dictPart.set(key, result);
+        return result;
+    }
+
+    // ── Part processing ───────────────────────────────────────────────────────────
+
+    processPart(part: SkinAssetPart | NodeElementSprite): NodeElement {
+        const name = part.name;
+        const cached = this._processedPart.get(name);
+        if (cached) return cached;
+
+        const data: NodeElementGroup[] = part instanceof SkinAssetPart ? this._iterEntry(part) : [[part]];
+        const node: NodeElement = {index: name, data};
+        this._processedPart.set(name, node);
+        return node;
+    }
+
+    private _iterEntry(assetPart: SkinAssetPart): NodeElementGroup[] {
+        const elements = this._walk(assetPart, null, false, 'symbolId');
+        const groups: NodeElementGroup[] = [];
+        let i = 0;
+        while (i < elements.length) {
+            const first = elements[i]!;
+            const isData = 'vertexes' in first;
+            let j = i + 1;
+            while (j < elements.length && ('vertexes' in elements[j]!) === isData) j++;
+            groups.push(elements.slice(i, j) as NodeElementGroup);
+            i = j;
+        }
+        // todo change this (come from python groupby),
+        return groups;
+    }
+
+    private _walk(
+        part: SkinAssetPart,
+        transformation: Mat3 | null,
+        assetEqualityCheck: boolean = true,
+        key: 'entries' | 'symbolId' = 'entries',
+    ): Array<NodeElementData | NodeElementSprite> {
+        const result: Array<NodeElementData | NodeElementSprite> = [];
+        let index = 0;
+        let drawIndex = 0;
+
+        while (index < part.entry.length) {
+            const entry = part.entry[index]!;
+
+            if (entry[key] === -1) {
+                const vertex = part.skinChunks[drawIndex];
+                if (vertex !== undefined) {
+                    result.push({transformation: transformation ?? mat3Identity(), vertexes: vertex});
+                    drawIndex++;
+                }
+                index++;
+                continue;
+            }
+
+            if (entry.symbolId < 0) {
+                index++;
+                continue;
+            }
+
+            const symbolName = part.getSymbolName(entry);
+            if (!symbolName || part.name === symbolName) {
+                index++;
+                continue;
+            }
+
+            const [newPart, isCustomised] = this._getSkinCustomAssetPart(symbolName);
+            if (newPart === null && !isCustomised) {
+                index++;
+                continue;
+            }
+
+            if (newPart instanceof SkinAssetPart) {
+                if (assetEqualityCheck && newPart.source === part.source) {
+                    index++;
+                    continue;
+                }
+                const transfo = part.computeTransfo(index, transformation);
+                const sub = this._walk(newPart, transfo);
+                if (sub.length > 0) result.push(...sub);
+            } else if (newPart !== null) {
+                const transfo = part.computeTransfo(index, transformation);
+                result.push({sprite: newPart.sprite, name: newPart.name, transformation: transfo});
+            }
+
+            [index, drawIndex] = part.computeIndexUpdate(index, drawIndex);
+        }
+        return result;
+    }
+
+    abstract getSubEntity(_subLook: Look, _index: string): DofusSprite;
+
+    async changeBone(boneName: string): Promise<void> {
+        await this._getBone(boneName);
+        this.animations = this._getAnimationDict();
+        this._dictPartIndex.clear();
+        this._dictPartIndexCustom.clear();
+        this._dictPart.clear();
+        this._processedPart.clear();
+    }
+
+    getSymbolNameIndex(symbolName: string | undefined, addIfNotExist = false): number {
+        if (!symbolName || !this._customSymbolRef.has(symbolName)) return -1;
+        const idx = this.data.exposedNodeNames.indexOf(symbolName);
+        if (idx !== -1) return idx;
+        if (!addIfNotExist) return -1;
+        this.data.exposedNodeNames.push(symbolName);
+        return this.data.exposedNodeNames.length - 1;
+    }
+}
