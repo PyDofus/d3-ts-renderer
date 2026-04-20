@@ -1,8 +1,8 @@
 import type {BodyData} from "./types";
-import {DataLoader, loader} from "./loader";
+import {getLoader} from "./loader";
 
 
-class Body {
+export class Body {
     readonly data: Map<number, BodyData>;
     readonly skinMapping: Map<number, BodyData>
 
@@ -13,10 +13,14 @@ class Body {
         for (const v of this.data.values()) this.skinMapping.set(Number(v.skins), v);
     }
 
-    static async create(loader: DataLoader): Promise<Body> {
-        const data = await loader.loadBodies();
+    static async create(): Promise<Body> {
+        const data = await getLoader().loadBodies();
         return new Body(data);
     }
 }
 
-export const bodies = await Body.create(loader)
+let _bodiesPromise: Promise<Body> | undefined;
+
+export function getBodies(): Promise<Body> {
+    return _bodiesPromise ??= Body.create();
+}

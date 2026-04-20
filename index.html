@@ -43,9 +43,12 @@
   <pre id="error"></pre>
 
   <script type="module">
-    // Import from the Vite dev server's built output.
-    // Run `npm run dev` in ts-lib/ and open this file via that server.
-    import { Look, DofusSprite, Directions, createDataLoader } from './src/index.ts';
+    import { Look, DofusSprite, configure } from './src/index.ts';
+
+    configure({
+      strategy: import.meta.env.VITE_DATA_STRATEGY ?? 'url',
+      basePath: import.meta.env.VITE_DATA_PATH ?? '',
+    });
 
     const loadBtn   = document.getElementById('loadBtn');
     const renderBtn = document.getElementById('renderBtn');

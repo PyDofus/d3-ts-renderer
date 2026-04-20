@@ -2,7 +2,7 @@ import type {DisplayListEntry, SkinAsset, SkinAssetPart as SkinAssetPartStub} fr
 import {type Bounds2D, type Mat3, mat3From, mat3Identity, mat3Mul, transformAABB} from '../math';
 import type {RendererContext} from './rendererContext';
 
-/** Stride in bytes for the interleaved vertex buffer: 2×f32 pos + 2×f32 uv + 1×u32 colorIdx. */
+/** Interleaved stride: in_pos (vec3 f32) + in_uv (vec2 f32). Pos.z carries the color idx. */
 const VERTEX_STRIDE = 20;
 
 function buildVertexBufferWithBounds(source: SkinAsset, startVertex: number, vertexCount: number): {
@@ -16,9 +16,9 @@ function buildVertexBufferWithBounds(source: SkinAsset, startVertex: number, ver
         const v = source.vertices[startVertex + i]!;
         view.setFloat32(i * VERTEX_STRIDE, v.pos.x, true);
         view.setFloat32(i * VERTEX_STRIDE + 4, v.pos.y, true);
-        view.setFloat32(i * VERTEX_STRIDE + 8, v.uv.x, true);
-        view.setFloat32(i * VERTEX_STRIDE + 12, v.uv.y, true);
-        view.setUint32(i * VERTEX_STRIDE + 16, v.pos.z, true);
+        view.setFloat32(i * VERTEX_STRIDE + 8, v.pos.z, true);
+        view.setFloat32(i * VERTEX_STRIDE + 12, v.uv.x, true);
+        view.setFloat32(i * VERTEX_STRIDE + 16, v.uv.y, true);
 
         if (v.pos.x < xMin) xMin = v.pos.x;
         if (v.pos.y < yMin) yMin = v.pos.y;
@@ -31,17 +31,18 @@ function buildVertexBufferWithBounds(source: SkinAsset, startVertex: number, ver
 export class Vertexs {
     readonly textureId: number;
     readonly vertexData: ArrayBuffer;
-    readonly indices: Uint32Array;
+    readonly indices: Uint32Array | Uint16Array;
     readonly mask: number;
     readonly bounds: Bounds2D;
 
-    constructor(textureId: number, source: SkinAsset, startVertex: number, vertexCount: number, startIndex: number, indexCount: number, mask: number) {
+    constructor(textureId: number, source: SkinAsset, startVertex: number, vertexCount: number, startIndex: number, indexCount: number, mask: number, useU32Indices: boolean) {
         this.textureId = textureId;
         this.mask = mask;
         const {buffer, bounds} = buildVertexBufferWithBounds(source, startVertex, vertexCount);
         this.vertexData = buffer;
         this.bounds = bounds;
-        this.indices = new Uint32Array(source.triangles.slice(startIndex, startIndex + indexCount) as number[]);
+        const tris = source.triangles.slice(startIndex, startIndex + indexCount);
+        this.indices = useU32Indices ? new Uint32Array(tris) : new Uint16Array(tris);
     }
 
     /** Transform bounding-box corners by mat and return [x0,y0,…,x3,y3]. */
@@ -63,13 +64,13 @@ export class SkinAssetPart {
     readonly transformMatrixEntry: readonly Mat3[];
     readonly skinChunks: readonly Vertexs[];
 
-    constructor(stub: SkinAssetPartStub, source: SkinAsset, textureOffset: number) {
+    constructor(stub: SkinAssetPartStub, source: SkinAsset, textureOffset: number, useU32Indices: boolean) {
         this.source = source;
         this.name = stub.name;
         this.entry = stub.DisplayListEntry;
         this.validSkinChunk = stub.skinChunks.some(c => c.vertexCount > 0);
         this.transformMatrixEntry = this._createTransfoMatrix(stub.DisplayListEntry);
-        this.skinChunks = this._createSkinChunks(stub, source, textureOffset);
+        this.skinChunks = this._createSkinChunks(stub, source, textureOffset, useU32Indices);
     }
 
     getSymbolName(entry: DisplayListEntry): string | undefined {
@@ -103,7 +104,7 @@ export class SkinAssetPart {
         });
     }
 
-    private _createSkinChunks(stub: SkinAssetPartStub, source: SkinAsset, textureOffset: number): Vertexs[] {
-        return stub.skinChunks.map(s => new Vertexs(s.textureIndex + textureOffset, source, s.startVertexIndex, s.vertexCount, s.startIndexIndex, s.indexCount, s.maskState));
+    private _createSkinChunks(stub: SkinAssetPartStub, source: SkinAsset, textureOffset: number, useU32Indices: boolean): Vertexs[] {
+        return stub.skinChunks.map(s => new Vertexs(s.textureIndex + textureOffset, source, s.startVertexIndex, s.vertexCount, s.startIndexIndex, s.indexCount, s.maskState, useU32Indices));
     }
 }

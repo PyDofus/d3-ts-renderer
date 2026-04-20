@@ -155,9 +155,17 @@ export interface SkinSlotRuleData {
     slotRulesList: SkinSlotsRulesInfoData[];
 }
 
+export type RawImageData = {
+    data: Uint8Array | Uint8ClampedArray;
+    width: number;
+    height: number;
+};
+
+export type TextureSource = ImageBitmap | RawImageData;
+
 export interface SkinBundle {
     skin: SkinAsset;
-    images: ImageBitmap[];
+    images: TextureSource[];
 }
 
 export interface BoneBundle {

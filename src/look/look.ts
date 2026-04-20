@@ -1,7 +1,7 @@
 import {indexedColorsToDict, parseLookStringColor, type RGB} from './colorUtilities';
 import {SubEntityCategory} from './enums';
 import type {BodyData} from "../data/types";
-import {bodies} from "../data/body";
+import {getBodies} from "../data/body";
 
 export interface LookDict {
     bonesId: number;
@@ -148,8 +148,9 @@ export class Look {
         return found ? found[0]! : conditionalLook[0]![0]!;
     }
 
-    getBody(): BodyData | undefined {
+    async getBody(): Promise<BodyData | undefined> {
         if (this.skins.length == 0) return undefined
+        const bodies = await getBodies();
         return bodies.skinMapping.get(this.skins[0]!)
     }
 

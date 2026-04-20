@@ -1,10 +1,11 @@
 import {BinaryReader} from '../readers/binaryReader';
 import {AnimationInstance} from '../readers/animationInstance';
 import type {Animation, BoneBundle} from './types';
-import {loader} from './loader';
+import {getLoader} from './loader';
 
 
 export async function getBoneData(boneName: string): Promise<BoneBundle> {
+    const loader = getLoader();
     try {
         return await loader.loadBone(boneName);
     } catch (err) {
@@ -18,6 +19,6 @@ export async function getBoneData(boneName: string): Promise<BoneBundle> {
 }
 
 export async function getAnimation(boneName: string, animation: Animation): Promise<AnimationInstance> {
-    const data = await loader.loadAnimationData(boneName, animation.name);
+    const data = await getLoader().loadAnimationData(boneName, animation.name);
     return new AnimationInstance(new BinaryReader(data));
 }

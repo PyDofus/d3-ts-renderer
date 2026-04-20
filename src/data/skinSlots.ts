@@ -1,5 +1,5 @@
 import type {BodyData, SkinSlotRuleData, SlotRuleData} from './types';
-import {DataLoader, loader} from './loader';
+import {getLoader} from './loader';
 
 const enum SkinSlotRuleType {
     Default = 0,
@@ -18,7 +18,7 @@ const slotEnumNames: Readonly<Record<number, string>> = {
 
 type SlotSkin = Map<number, Map<number, SlotRuleData[]>>
 
-class SkinSlot {
+export class SkinSlot {
     private readonly _slotRules: Map<number, SlotSkin>;
 
     private constructor(data: Record<string, SkinSlotRuleData>) {
@@ -37,8 +37,8 @@ class SkinSlot {
         }
     }
 
-    static async create(loader: DataLoader): Promise<SkinSlot> {
-        const data = await loader.loadSkinSlots();
+    static async create(): Promise<SkinSlot> {
+        const data = await getLoader().loadSkinSlots();
         return new SkinSlot(data);
     }
 
@@ -88,4 +88,8 @@ class SkinSlot {
     }
 }
 
-export const skinSlots = await SkinSlot.create(loader)
+let _skinSlotsPromise: Promise<SkinSlot> | undefined;
+
+export function getSkinSlots(): Promise<SkinSlot> {
+    return _skinSlotsPromise ??= SkinSlot.create();
+}

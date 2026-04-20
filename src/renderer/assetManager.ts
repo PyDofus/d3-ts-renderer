@@ -1,6 +1,6 @@
 import {getBoneData} from '../data/boneLoader';
 import {getSkin} from '../data/skinLoader';
-import type {AnimatedObjectDefinition, Animation, SkinAsset} from '../data/types';
+import type {AnimatedObjectDefinition, Animation, SkinAsset, TextureSource} from '../data/types';
 import type {Look} from '../look/look';
 import type {RenderState} from '../readers/renderState';
 import {type Mat3, mat3Identity} from '../math';
@@ -13,7 +13,7 @@ import {
 import {SkinAssetPart} from './skinAssetPart';
 import type {RendererContext} from './rendererContext';
 import type {DofusSprite} from './dofusSprite';
-import {skinSlots} from "../data/skinSlots";
+import {getSkinSlots} from "../data/skinSlots";
 
 type CustomPart = SkinAssetPart | NodeElementSprite | null;
 type AssetPartResult = [found: boolean, part: CustomPart, isCustomised: boolean];
@@ -47,7 +47,8 @@ export abstract class AssetManager {
         await this._getSkinDict();
         this._getCustomSymbol();
         this._getEmptyCustomisation();
-        this._rulesEmpty = skinSlots.slotFromBody(this.look.skins, this.look.getBody());
+        const [skinSlots, body] = await Promise.all([getSkinSlots(), this.look.getBody()]);
+        this._rulesEmpty = skinSlots.slotFromBody(this.look.skins, body);
         this.animations = this._getAnimationDict();
     }
 
@@ -93,7 +94,7 @@ export abstract class AssetManager {
         }
     }
 
-    private _loadTextures(images: ImageBitmap[], key: string): void {
+    private _loadTextures(images: TextureSource[], key: string): void {
         if (key === 'main' && this._textureIndexDict.has('main')) {
             this.openGl.loadTexture(images[0]!, this._textureIndexDict.get('main'));
         } else {
@@ -114,7 +115,7 @@ export abstract class AssetManager {
         if (cached) return cached;
         const graphic = this.data.graphics[index]!;
         const textureOffset = this._textureIndexDict.get('main')!;
-        const part = new SkinAssetPart(graphic.part, this.boneAsset, textureOffset);
+        const part = new SkinAssetPart(graphic.part, this.boneAsset, textureOffset, this.openGl.supportsU32Indices);
         this._dictPartIndex.set(index, part);
         return part;
     }
@@ -145,7 +146,7 @@ export abstract class AssetManager {
             if (skin) {
                 const textureOffset = this._textureIndexDict.get(skin.m_Name)!;
                 const stub = skin.m_values[skin.m_keys.indexOf(symbolName)]!;
-                const part = new SkinAssetPart(stub, skin, textureOffset);
+                const part = new SkinAssetPart(stub, skin, textureOffset, this.openGl.supportsU32Indices);
                 const r: [CustomPart, boolean] = [part, true];
                 this._dictPartIndexCustom.set(symbolName, r);
                 return r;

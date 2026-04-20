@@ -5,8 +5,11 @@ import type {
     MetadataRoot,
     SkinAsset,
     SkinBundle,
-    SkinSlotRuleData
+    SkinSlotRuleData,
+    TextureSource
 } from './types';
+
+export type ImageDecoder = (bytes: Uint8Array, path: string) => Promise<TextureSource>;
 
 const enum StreamingAssets {
     Map_Data = "Map/Data",
@@ -32,6 +35,10 @@ const enum DataBundle {
     Body = "bodiesdataroot",
 }
 
+export type DataConfig =
+    | { strategy: 'url'; basePath: string }
+    | { strategy: 'fs'; basePath: string; decodeImage?: ImageDecoder };
+
 
 export abstract class DataLoader {
     protected readonly _base: string;
@@ -44,14 +51,14 @@ export abstract class DataLoader {
 
     protected abstract binary(path: string): Promise<ArrayBuffer>;
 
-    protected abstract image(path: string): Promise<ImageBitmap>;
+    protected abstract image(path: string): Promise<TextureSource>;
 
     protected async data<T>(name: string): Promise<Record<string, T>> {
         const raw = await this.json<MetadataRoot<T>>(`${StreamingAssets.Data}/${name}.json`);
         return raw.objectsById;
     }
 
-    protected images(folder: string, textures: Array<{ m_PathID: string }>): Promise<ImageBitmap[]> {
+    protected images(folder: string, textures: Array<{ m_PathID: string }>): Promise<TextureSource[]> {
         return Promise.all(textures.map(t => this.image(`${folder}/${t.m_PathID}.png`)));
     }
 
@@ -83,7 +90,7 @@ export abstract class DataLoader {
     }
 }
 
-export class UrlLoader extends DataLoader {
+class UrlLoader extends DataLoader {
     protected async json<T>(path: string): Promise<T> {
         const res = await fetch(this._base + path);
         if (!res.ok) throw new Error(`HTTP ${res.status} fetching ${path}`);
@@ -96,10 +103,46 @@ export class UrlLoader extends DataLoader {
         return res.arrayBuffer();
     }
 
-    protected async image(path: string): Promise<ImageBitmap> {
+    protected async image(path: string): Promise<TextureSource> {
         const res = await fetch(this._base + path);
         if (!res.ok) throw new Error(`HTTP ${res.status} fetching ${path}`);
         return createImageBitmap(await res.blob());
+    }
+}
+
+class FsLoader extends DataLoader {
+    private readonly _decodeImage: ImageDecoder | undefined;
+
+    constructor(basePath: string, decodeImage?: ImageDecoder) {
+        super(basePath);
+        this._decodeImage = decodeImage;
+    }
+
+    private async readFile(path: string): Promise<Uint8Array> {
+        const {readFile} = await import('node:fs/promises');
+        return readFile(this._base + path);
+    }
+
+    protected async json<T>(path: string): Promise<T> {
+        const buf = await this.readFile(path);
+        return JSON.parse(new TextDecoder().decode(buf));
+    }
+
+    protected async binary(path: string): Promise<ArrayBuffer> {
+        const buf = await this.readFile(path);
+        return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer;
+    }
+
+    protected async image(path: string): Promise<TextureSource> {
+        if (this._decodeImage) {
+            const bytes = await this.readFile(path);
+            return this._decodeImage(bytes, path);
+        }
+        if (typeof createImageBitmap !== 'undefined') {
+            const ab = await this.binary(path);
+            return createImageBitmap(new Blob([ab]));
+        }
+        throw new Error("No image decoder available — pass `decodeImage` in the 'fs' config (e.g. using sharp or @napi-rs/canvas) when running under Node.");
     }
 }
 
@@ -107,23 +150,21 @@ export function createDataLoader(config: DataConfig): DataLoader {
     switch (config.strategy) {
         case "url":
             return new UrlLoader(config.basePath);
-        default:
-            throw new Error(`Unknown strategy: ${config.strategy}`);
+        case "fs":
+            return new FsLoader(config.basePath, config.decodeImage);
     }
 }
 
-declare const __DATA_STRATEGY__: string;
-declare const __DATA_BASE_PATH__: string;
+let _loader: DataLoader | undefined;
 
-export interface DataConfig {
-    strategy: string;
-    basePath: string;
+export function configure(config: DataConfig): DataLoader {
+    _loader = createDataLoader(config);
+    return _loader;
 }
 
-const defaultConfig: DataConfig = {strategy: __DATA_STRATEGY__, basePath: __DATA_BASE_PATH__};
-export const loader = createDataLoader(defaultConfig);
-
-// todo add other loader strategy that extend dataLoader:
-//  - local file to work with node without browser
-//  - python + unitypy to add a rendering mode without extraction
-//  - ...
+export function getLoader(): DataLoader {
+    if (!_loader) {
+        throw new Error("DataLoader not configured. Call configure({strategy, basePath}) before using the renderer.");
+    }
+    return _loader;
+}
