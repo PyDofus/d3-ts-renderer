@@ -1,6 +1,6 @@
-import type {BinaryReader} from './binaryReader.js';
-import {type Color32, emptyFlashFilters, FilterType, type FlashFilters,} from './flashFilters.js';
-import {type Mat3, mat3From, mat3Identity} from '../math.js';
+import type {BinaryReader} from './binaryReader';
+import {type Color32, emptyFlashFilters, FilterType, type FlashFilters,} from './flashFilters';
+import {type Mat3, mat3From, mat3Identity} from '../math';
 
 export const enum NodeState {
     NONE = 0,
@@ -68,9 +68,7 @@ export class RenderState {
     compute(data: BinaryReader): void {
         const num = data.u8;
 
-        if (num & NodeState.SpriteOpacity) {
-            this.alpha = data.u8 / 127;
-        }
+        if (num & NodeState.SpriteOpacity) this.alpha = data.u8 / 127;
         data.align(4);
 
         if (num & (NodeState.SpriteIndex | NodeState.CustomisationIndex)) {
@@ -80,13 +78,9 @@ export class RenderState {
             data.align(4);
         }
 
-        if (num & NodeState.SpriteColorMultiply) {
-            this.multiplicativeColor = data.readRgba();
-        }
+        if (num & NodeState.SpriteColorMultiply) this.multiplicativeColor = data.readRgba();
 
-        if (num & NodeState.SpriteColorAdditive) {
-            this.additiveColor = data.readRgba();
-        }
+        if (num & NodeState.SpriteColorAdditive) this.additiveColor = data.readRgba();
 
         if (num & NodeState.Matrix) {
             this.tranfoMatrix = mat3From(
@@ -103,38 +97,35 @@ export class RenderState {
 
         if (num & NodeState.ExtendedFilterAndBlendModes) {
             this.flashFilter = emptyFlashFilters();
-            this.#computeExtendedFilterAndBlendState(data);
+            this.computeExtendedFilterAndBlendState(data);
         }
     }
 
-    #computeExtendedFilterAndBlendState(data: BinaryReader): void {
-        console.log("extended")
+    private computeExtendedFilterAndBlendState(data: BinaryReader): void {
         const num = data.u8;
         this.blendMode = data.u8;
         data.skip(2);
 
-        if (num & Filter.ColorMatrixFilter) {
-            this.colorMatrix = data.readF32Array(20);
-        }
+        if (num & Filter.ColorMatrixFilter) this.colorMatrix = data.readF32Array(20);
 
         const filterCount = data.u8;
         for (let i = 0; i < filterCount; i++) {
             const value = data.u8;
             data.align(4);
-            if (value & Filter.DropShadowFilter) this.#computeDropShadowFilter(data);
-            if (value & Filter.BlurFilter) this.#computeBlurFilter(data);
-            if (value & Filter.GlowFilter) this.#computeGlowFilter(data);
+            if (value & Filter.DropShadowFilter) this.computeDropShadowFilter(data);
+            if (value & Filter.BlurFilter) this.computeBlurFilter(data);
+            if (value & Filter.GlowFilter) this.computeGlowFilter(data);
         }
         data.align(4);
     }
 
-    #computeBlurFilter(data: BinaryReader): void {
+    private computeBlurFilter(data: BinaryReader): void {
         if (!this.flashFilter) return;
         this.flashFilter.blurFilters.push({blurX: data.f32, blurY: data.f32, numPasses: data.i32});
         this.flashFilter.filterOrder.push(FilterType.Blur);
     }
 
-    #computeGlowFilter(data: BinaryReader): void {
+    private computeGlowFilter(data: BinaryReader): void {
         if (!this.flashFilter) return;
         this.flashFilter.glowFilters.push({
             glowColor: data.readRgba(),
@@ -145,7 +136,7 @@ export class RenderState {
         this.flashFilter.filterOrder.push(FilterType.Glow);
     }
 
-    #computeDropShadowFilter(data: BinaryReader): void {
+    private computeDropShadowFilter(data: BinaryReader): void {
         if (!this.flashFilter) return;
         this.flashFilter.dropShadowFilters.push({
             dropShadowColor: data.readRgba(),

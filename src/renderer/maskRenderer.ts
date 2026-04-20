@@ -1,8 +1,8 @@
-import {MaskFlags} from '../readers/renderState.js';
-import type {RendererContext} from './rendererContext.js';
-import type {BufferElement} from './buffer.js';
-import type {NodeElementData} from './nodeStructure.js';
-import type {Mat3} from '../math.js';
+import {MaskFlags} from '../readers/renderState';
+import type {RendererContext} from './rendererContext';
+import type {BufferElement} from './buffer';
+import type {NodeElementData} from './nodeStructure';
+import type {Mat3} from '../math';
 
 export class MaskRenderer {
     private readonly _ctx: RendererContext;

@@ -1,15 +1,12 @@
-export {Look} from './look/look.js';
-export {SubEntityCategory} from './look/enums.js';
-export type {RGB} from './look/colorUtilities.js';
-export {intToRgb, rgbToInt, indexedColorsToDict} from './look/colorUtilities.js';
+export {Look} from './look/look';
+export {SubEntityCategory} from './look/enums';
+export type {RGB} from './look/colorUtilities';
+export {intToRgb, indexedColorsToDict} from './look/colorUtilities';
 
-export {Directions, oppositeDirection} from './data/directions.js';
-export {getAnimName, getRelatedChildAnim} from './data/animation';
+export {Directions, oppositeDirection} from './data/directions';
+export {getAnimName} from './data/animation';
 
-export {createDataLoader, loader} from './data/loader.js';
-export type {DataLoader, DataConfig} from './data/loader.js';
-export type {AnimatedObjectDefinition, Animation, Rectf, SkinAsset, BodyData} from './data/types.js';
+export {createDataLoader, loader} from './data/loader';
+export type {DataLoader, DataConfig} from './data/loader';
 
-export {DofusSprite} from './renderer/dofusSprite.js';
-export {RendererContext} from './renderer/rendererContext.js';
-export {BlendMode, MaskFlags} from './readers/renderState.js';
+export {DofusSprite} from './renderer/dofusSprite';

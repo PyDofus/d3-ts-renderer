@@ -6,7 +6,7 @@ import type {
     SkinAsset,
     SkinBundle,
     SkinSlotRuleData
-} from './types.js';
+} from './types';
 
 const enum StreamingAssets {
     Map_Data = "Map/Data",

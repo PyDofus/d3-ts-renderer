@@ -1,13 +1,13 @@
-import {type RenderState} from '../readers/renderState.js';
-import {type RenderContext, renderContextFromState, renderContextWithMatrix} from './context.js';
-import {type Mat3, mat3FlipX, mat3Mul, mat3Translation} from '../math.js';
+import {type RenderState} from '../readers/renderState';
+import {type RenderContext, renderContextFromState, renderContextWithMatrix} from './context';
+import {type Mat3, mat3FlipX, mat3Mul, mat3Translation} from '../math';
 import {
     isDataGroup,
     isSpriteGroup,
     type NodeElement,
     type NodeElementData,
     type NodeElementSprite
-} from './nodeStructure.js';
+} from './nodeStructure';
 
 export interface BufferElement {
     readonly context: RenderContext;

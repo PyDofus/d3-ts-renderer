@@ -60,17 +60,6 @@ export function mat3Translation(m: Mat3, scale: number): Mat3 {
     return mat3From(1, 0, 0, 0, 1, 0, scale * m[2]!, scale * m[5]!, 1);
 }
 
-/**
- * Transform homogeneous 2D point [x, y, 1] by row-major mat3.
- * Equivalent to `(m @ [x,y,1]^T)`.
- */
-export function mat3TransformPoint(m: Mat3, x: number, y: number): [number, number] {
-    return [
-        m[0]! * x + m[1]! * y + m[2]!,
-        m[3]! * x + m[4]! * y + m[5]!,
-    ];
-}
-
 export type Bounds2D = { xMin: number; yMin: number; xMax: number; yMax: number; };
 
 export function transformAABB(b: Bounds2D, m: Mat3): Bounds2D {

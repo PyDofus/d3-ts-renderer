@@ -1,5 +1,5 @@
-import {indexedColorsToDict, parseLookStringColor, type RGB} from './colorUtilities.js';
-import {SubEntityCategoryByName} from './enums.js';
+import {indexedColorsToDict, parseLookStringColor, type RGB} from './colorUtilities';
+import {SubEntityCategory} from './enums';
 import type {BodyData} from "../data/types";
 import {bodies} from "../data/body";
 
@@ -12,7 +12,7 @@ export interface LookDict {
 }
 
 export interface SubEntityLookDict {
-    bindingPointCategory: string;
+    bindingPointCategory: keyof typeof SubEntityCategory;
     subEntityLook: LookDict;
 }
 
@@ -25,7 +25,7 @@ export class Look {
     private color: Map<number, RGB>;
     private _flatColorArray?: Float32Array;
 
-    static readonly #numberBaseDict: Readonly<Record<string, number>> = {A: 10, G: 16, Z: 36};
+    private static readonly numberBaseDict: Readonly<Record<string, number>> = {A: 10, G: 16, Z: 36};
 
     constructor(bone: number, skins: number[] = [], color: Map<number, RGB> = new Map(), size = 1) {
         this.bone = bone;
@@ -74,12 +74,10 @@ export class Look {
             const header = s.slice(1, closeBracket);
             s = s.slice(closeBracket + 1);
             const headerParts = header.split(',');
-            base = Look.#numberBaseDict[headerParts[1] ?? ''] ?? 10;
+            base = Look.numberBaseDict[headerParts[1] ?? ''] ?? 10;
         }
 
-        if (s.includes(',{')) {
-            s = Look.#extractDefaultConditionalLook(s);
-        }
+        if (s.includes(',{')) s = Look.extractDefaultConditionalLook(s);
 
         const inner = s.startsWith('{') ? s.slice(1) : s;
         const stripped = inner.endsWith('}') ? inner.slice(0, -1) : inner;
@@ -123,7 +121,7 @@ export class Look {
         );
 
         for (const sub of lookDict.subEntities ?? []) {
-            const category = SubEntityCategoryByName[sub.bindingPointCategory] ?? 0;
+            const category = SubEntityCategory[sub.bindingPointCategory as keyof typeof SubEntityCategory] ?? 0;
             let catMap = look.subEntities.get(category);
             if (!catMap) {
                 catMap = new Map();
@@ -144,7 +142,7 @@ export class Look {
         return Look.fromString(new TextDecoder().decode(bytes));
     }
 
-    static #extractDefaultConditionalLook(lookString: string): string {
+    private static extractDefaultConditionalLook(lookString: string): string {
         const conditionalLook = lookString.split(',{').map(s => (s.endsWith('}') ? s.slice(0, -1) : s).split('$'));
         const found = conditionalLook.find(i => i[1]!.endsWith(';'));
         return found ? found[0]! : conditionalLook[0]![0]!;

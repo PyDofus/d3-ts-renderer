@@ -1,36 +1,11 @@
-import type {BodyData, SkinSlotRuleData, SlotRuleData} from './types.js';
-import {DataLoader, loader} from './loader.js';
+import type {BodyData, SkinSlotRuleData, SlotRuleData} from './types';
+import {DataLoader, loader} from './loader';
 
 const enum SkinSlotRuleType {
     Default = 0,
     Breed = 1,
     BreedAndSex = 2,
     Face = 3,
-}
-
-const enum SlotEnum {
-    Bandeau_ = 0,
-    BandeauB_ = 1,
-    Barbe_ = 2,
-    Chapeau_ = 3,
-    ChapeauB_ = 4,
-    cheveux_ = 5,
-    Frange_ = 20,
-    Custo_ = 6,
-    Oreille_d_ = 7,
-    Oreille_g_ = 8,
-    Oreille_ = 9,
-    Oreille_b_ = 10,
-    Masque_ = 11,
-    MasqueB_ = 12,
-    NatteHaute_ = 13,
-    Natte_ = 16,
-    NatteB_ = 17,
-    Natte_Basse_ = 19,
-    Patte_d_ = 14,
-    Patte_g_ = 15,
-    Patte_0 = 18,
-    Tete_OL_ = 21,
 }
 
 const slotEnumNames: Readonly<Record<number, string>> = {
@@ -48,7 +23,7 @@ class SkinSlot {
 
     private constructor(data: Record<string, SkinSlotRuleData>) {
         this._slotRules = new Map<number, SlotSkin>();
-        for (const entry of Object.values(data)) {
+        for (const [skinId, entry] of Object.entries(data)) {
             const skinRules: SlotSkin = new Map();
             for (const elem of entry.slotRulesList) {
                 let byType = skinRules.get(elem.slotRuleType);
@@ -58,7 +33,7 @@ class SkinSlot {
                 }
                 byType.set(elem.slotRuleInfo, elem.slotsRules)
             }
-            this._slotRules.set(entry.skinId, skinRules);
+            this._slotRules.set(Number(skinId), skinRules);
         }
     }
 
@@ -85,13 +60,13 @@ class SkinSlot {
         for (const skin of skins) {
             const skinData = this._slotRules.get(skin);
             if (!skinData) continue;
-            const slot = this.#slotFromRules(skinData, rules);
-            if (slot) this.#updateSlotSet(slot, slotSet);
+            const slot = this.slotFromRules(skinData, rules);
+            if (slot) this.updateSlotSet(slot, slotSet);
         }
         return slotSet;
     }
 
-    #slotFromRules(slotSkin: SlotSkin, rules: Array<[SkinSlotRuleType, number]>): SlotRuleData[] | undefined {
+    private slotFromRules(slotSkin: SlotSkin, rules: Array<[SkinSlotRuleType, number]>): SlotRuleData[] | undefined {
         for (const [ruleType, key] of rules) {
             const slot = slotSkin.get(ruleType)?.get(key);
             if (slot) return slot;
@@ -99,7 +74,7 @@ class SkinSlot {
         return undefined;
     }
 
-    #updateSlotSet(slotRules: SlotRuleData[], slotSet: Set<string>): void {
+    private updateSlotSet(slotRules: SlotRuleData[], slotSet: Set<string>): void {
         for (const slotRule of slotRules) {
             const skipTest = (slotRule.mask & 1) === 0;
             for (let i = 0; i < 5; i++) {

@@ -1,9 +1,9 @@
-import {MaskFlags} from '../readers/renderState.js';
-import type {Look} from '../look/look.js';
-import type {Rectf} from '../data/types.js';
-import type {BufferElement, BufferFrames} from './buffer.js';
-import {MaskRenderer} from './maskRenderer.js';
-import type {RendererContext} from './rendererContext.js';
+import {MaskFlags} from '../readers/renderState';
+import type {Look} from '../look/look';
+import type {Rectf} from '../data/types';
+import type {BufferElement, BufferFrames} from './buffer';
+import {MaskRenderer} from './maskRenderer';
+import type {RendererContext} from './rendererContext';
 
 export class FrameRenderer {
     private readonly _openGl: RendererContext;

@@ -20,30 +20,23 @@
   <h2>Dofus Sprite Renderer</h2>
 
   <label>Look string (or hex b16)
-    <input id="look" type="text" value="{4907|||130}" />
-  </label>
-  <label>Animation name (leave empty for default)
-    <input id="anim" type="text" placeholder="AnimStatique" />
-  </label>
-  <label>Direction
-    <select id="direction">
-      <option value="0">0 — RIGHT</option>
-      <option value="1">1 — DOWN_RIGHT</option>
-      <option value="2">2 — DOWN</option>
-      <option value="3">3 — DOWN_LEFT</option>
-      <option value="4">4 — LEFT</option>
-      <option value="5">5 — UP_LEFT</option>
-      <option value="6">6 — UP</option>
-      <option value="7">7 — UP_RIGHT</option>
-    </select>
+    <input id="look" type="text" value="{1|120,2195,3042,3069,3963|1=16777215,2=15335424,3=15335424,4=16777215,5=0,6=15335424|56}" />
   </label>
   <label>Scale
     <input id="scale" type="number" value="2" min="0.1" max="10" step="0.1" style="width:80px" />
   </label>
 
   <br/>
-  <button id="renderBtn">Render</button>
-  <button id="stopBtn" style="display:none">Stop</button>
+  <button id="loadBtn">Load Look</button>
+
+  <div id="anim-wrap" style="display:none">
+    <label style="margin-top:.8rem">Animation
+      <select id="anim" style="width:340px"></select>
+    </label>
+    <br/>
+    <button id="renderBtn">Render</button>
+    <button id="stopBtn" style="display:none">Stop</button>
+  </div>
 
   <div id="canvas-wrap"><canvas id="canvas" width="1" height="1"></canvas></div>
   <div id="info"></div>
@@ -54,14 +47,18 @@
     // Run `npm run dev` in ts-lib/ and open this file via that server.
     import { Look, DofusSprite, Directions, createDataLoader } from './src/index.ts';
 
+    const loadBtn   = document.getElementById('loadBtn');
     const renderBtn = document.getElementById('renderBtn');
     const stopBtn   = document.getElementById('stopBtn');
+    const animWrap  = document.getElementById('anim-wrap');
+    const animSel   = document.getElementById('anim');
     const errorEl   = document.getElementById('error');
     const infoEl    = document.getElementById('info');
     const canvas    = document.getElementById('canvas');
 
     let rafId = null;
     let frameIndex = 0;
+    let loadedSprite = null;
 
     stopBtn.addEventListener('click', () => {
       if (rafId !== null) { cancelAnimationFrame(rafId); rafId = null; }
@@ -69,17 +66,15 @@
       renderBtn.style.display = '';
     });
 
-    renderBtn.addEventListener('click', async () => {
+    loadBtn.addEventListener('click', async () => {
       errorEl.textContent = '';
       infoEl.textContent = 'Loading…';
       if (rafId !== null) { cancelAnimationFrame(rafId); rafId = null; }
+      animWrap.style.display = 'none';
+      loadedSprite = null;
 
       try {
-        const lookStr  = document.getElementById('look').value.trim();
-        const animName = document.getElementById('anim').value.trim() || undefined;
-        const dir      = parseInt(document.getElementById('direction').value);
-        const scale    = parseFloat(document.getElementById('scale').value) || 2;
-
+        const lookStr = document.getElementById('look').value.trim();
         if (!lookStr) throw new Error('Look string is required');
 
         const look = lookStr.match(/^[0-9a-fA-F]{6,}$/)
@@ -87,23 +82,46 @@
           : Look.fromString(lookStr);
 
         infoEl.textContent = `Creating sprite for bone ${look.bone}…`;
-
         const sprite = await DofusSprite.create(look, canvas);
+        loadedSprite = sprite;
 
-        const [resolvedAnim, flip] = sprite.getAnimName(dir, animName);
-        infoEl.textContent = `Preparing animation '${resolvedAnim}'${flip ? ' (flipped)' : ''}…`;
+        const animNames = [...sprite.animations.keys()];
+        animSel.innerHTML = animNames
+          .map(n => `<option value="${n}">${n}</option>`)
+          .join('');
 
-        await sprite.prepareAnimation(resolvedAnim, scale, true);
+        animWrap.style.display = '';
+        renderBtn.style.display = '';
+        stopBtn.style.display = 'none';
+        infoEl.textContent = `Loaded — ${animNames.length} animation(s) available`;
+      } catch (err) {
+        errorEl.textContent = err instanceof Error ? `${err.name}: ${err.message}\n${err.stack ?? ''}` : String(err);
+        infoEl.textContent = '';
+      }
+    });
 
-        const frameCount = sprite.getFrameCount(resolvedAnim);
-        infoEl.textContent = `Animation '${resolvedAnim}' — ${frameCount} frames`;
+    renderBtn.addEventListener('click', async () => {
+      if (!loadedSprite) return;
+      errorEl.textContent = '';
+      if (rafId !== null) { cancelAnimationFrame(rafId); rafId = null; }
+
+      try {
+        const sprite   = loadedSprite;
+        const animName = animSel.value || undefined;
+        const scale    = parseFloat(document.getElementById('scale').value) || 2;
+
+        infoEl.textContent = `Preparing animation '${animName}'…`;
+
+        await sprite.prepareAnimation(animName, scale, true);
+
+        const frameCount = sprite.getFrameCount(animName);
+        infoEl.textContent = `Animation '${animName}' — ${frameCount} frames - ${loadedSprite.data.defaultFrameRate} fps`;
 
         frameIndex = 0;
         renderBtn.style.display = 'none';
         stopBtn.style.display = '';
 
-        const FPS = 25;
-        const MS_PER_FRAME = 1000 / FPS;
+        const MS_PER_FRAME = 1000 / loadedSprite.data.defaultFrameRate;
         let lastTime = 0;
 
         function tick(time) {

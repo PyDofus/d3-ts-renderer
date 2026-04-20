@@ -132,8 +132,6 @@ export interface BodyData {
     nameId: I18n;
 }
 
-export type BodiesDataRoot = MetadataRoot<BodyData>;
-
 export enum SkinSlotRuleType {
     Default = 0,
     Breed = 1,
@@ -156,8 +154,6 @@ export interface SkinSlotRuleData {
     skinId: number;
     slotRulesList: SkinSlotsRulesInfoData[];
 }
-
-export type SkinSlotsRulesDataRoot = MetadataRoot<SkinSlotRuleData>;
 
 export interface SkinBundle {
     skin: SkinAsset;

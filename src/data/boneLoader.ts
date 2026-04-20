@@ -1,7 +1,7 @@
-import {BinaryReader} from '../readers/binaryReader.js';
-import {AnimationInstance} from '../readers/animationInstance.js';
-import type {Animation, BoneBundle} from './types.js';
-import {loader} from './loader.js';
+import {BinaryReader} from '../readers/binaryReader';
+import {AnimationInstance} from '../readers/animationInstance';
+import type {Animation, BoneBundle} from './types';
+import {loader} from './loader';
 
 
 export async function getBoneData(boneName: string): Promise<BoneBundle> {

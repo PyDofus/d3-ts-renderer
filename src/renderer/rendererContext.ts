@@ -1,6 +1,6 @@
-import {BlendMode} from '../readers/renderState.js';
-import {type Mat3} from '../math.js';
-import {MASK_FRAG, MASK_VERT, RENDER_FRAG, RENDER_VERT} from './shaders.js';
+import {BlendMode} from '../readers/renderState';
+import {type Mat3} from '../math';
+import {MASK_FRAG, MASK_VERT, RENDER_FRAG, RENDER_VERT} from './shaders';
 
 const enum FlashBlendKeyword {
     NONE = 0,

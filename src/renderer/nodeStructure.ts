@@ -1,5 +1,5 @@
-import type {Vertexs} from './skinAssetPart.js';
-import type {Mat3} from '../math.js';
+import type {Vertexs} from './skinAssetPart';
+import type {Mat3} from '../math';
 import type {DofusSprite} from "./dofusSprite";
 
 export interface NodeElementData {

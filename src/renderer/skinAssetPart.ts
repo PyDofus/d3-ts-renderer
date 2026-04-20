@@ -1,6 +1,6 @@
-import type {DisplayListEntry, SkinAsset, SkinAssetPart as SkinAssetPartStub} from '../data/types.js';
-import {type Bounds2D, type Mat3, mat3From, mat3Identity, mat3Mul, transformAABB} from '../math.js';
-import type {RendererContext} from './rendererContext.js';
+import type {DisplayListEntry, SkinAsset, SkinAssetPart as SkinAssetPartStub} from '../data/types';
+import {type Bounds2D, type Mat3, mat3From, mat3Identity, mat3Mul, transformAABB} from '../math';
+import type {RendererContext} from './rendererContext';
 
 /** Stride in bytes for the interleaved vertex buffer: 2×f32 pos + 2×f32 uv + 1×u32 colorIdx. */
 const VERTEX_STRIDE = 20;

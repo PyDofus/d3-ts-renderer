@@ -1,18 +1,18 @@
-import {getBoneData} from '../data/boneLoader.js';
-import {getSkin} from '../data/skinLoader.js';
-import type {AnimatedObjectDefinition, Animation, SkinAsset} from '../data/types.js';
-import type {Look} from '../look/look.js';
-import type {RenderState} from '../readers/renderState.js';
-import {type Mat3, mat3Identity} from '../math.js';
+import {getBoneData} from '../data/boneLoader';
+import {getSkin} from '../data/skinLoader';
+import type {AnimatedObjectDefinition, Animation, SkinAsset} from '../data/types';
+import type {Look} from '../look/look';
+import type {RenderState} from '../readers/renderState';
+import {type Mat3, mat3Identity} from '../math';
 import {
     type NodeElement,
     type NodeElementData,
     type NodeElementGroup,
     type NodeElementSprite
-} from './nodeStructure.js';
-import {SkinAssetPart} from './skinAssetPart.js';
-import type {RendererContext} from './rendererContext.js';
-import type {DofusSprite} from './dofusSprite.js';
+} from './nodeStructure';
+import {SkinAssetPart} from './skinAssetPart';
+import type {RendererContext} from './rendererContext';
+import type {DofusSprite} from './dofusSprite';
 import {skinSlots} from "../data/skinSlots";
 
 type CustomPart = SkinAssetPart | NodeElementSprite | null;
@@ -37,7 +37,7 @@ export abstract class AssetManager {
     private _dictPart = new Map<string, AssetPartResult>();
     private _processedPart = new Map<string, NodeElement>();
 
-    constructor(look: Look, openGl: RendererContext) {
+    protected constructor(look: Look, openGl: RendererContext) {
         this.look = look;
         this.openGl = openGl;
     }
@@ -62,16 +62,20 @@ export abstract class AssetManager {
     }
 
     private async _getSkinDict(): Promise<void> {
+        const results = new Map<number, any>(); // order is important for skinDict
         await Promise.all(
             this.look.skins.map(async skinId => {
                 try {
                     const {skin, images} = await getSkin(skinId);
                     this._loadTextures(images, String(skinId));
-                    this._skinsDict.set(skinId, skin);
-                } catch {
-                }
+                    results.set(skinId, skin);
+                } catch {}
             }),
         );
+        for (const skinId of this.look.skins) {
+            const skin = results.get(skinId);
+            if (skin !== undefined) this._skinsDict.set(skinId, skin);
+        }
     }
 
     private _getCustomSymbol(): void {

@@ -1,5 +1,5 @@
-import {BinaryReader} from './binaryReader.js';
-import {RenderState} from './renderState.js';
+import {BinaryReader} from './binaryReader';
+import {RenderState} from './renderState';
 
 export interface AnimationLabel {
     frame: number;

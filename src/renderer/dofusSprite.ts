@@ -1,13 +1,13 @@
-import {getAnimation} from '../data/boneLoader.js';
-import type {Look} from '../look/look.js';
-import {type Directions} from '../data/directions.js';
-import {getAnimName, getRelatedChildAnim} from '../data/animation.js';
-import type {AnimationInstance} from '../readers/animationInstance.js';
-import {type Mat3, mat3Scale} from '../math.js';
-import {AssetManager} from './assetManager.js';
-import {Buffer, type BufferFrames} from './buffer.js';
-import {FrameRenderer} from './frameRenderer.js';
-import {RendererContext} from './rendererContext.js';
+import {getAnimation} from '../data/boneLoader';
+import type {Look} from '../look/look';
+import {type Directions} from '../data/directions';
+import {getAnimName, getRelatedChildAnim} from '../data/animation';
+import type {AnimationInstance} from '../readers/animationInstance';
+import {type Mat3, mat3Scale} from '../math';
+import {AssetManager} from './assetManager';
+import {Buffer, type BufferFrames} from './buffer';
+import {FrameRenderer} from './frameRenderer';
+import {RendererContext} from './rendererContext';
 
 export class DofusSprite extends AssetManager {
     readonly parent: DofusSprite | null;
@@ -155,7 +155,6 @@ export class DofusSprite extends AssetManager {
     buffer(animName: string): BufferFrames {
         const frames = this._animationBuffer.get(animName);
         if (!frames) throw new Error(`Frames for '${animName}' not ready. Call buildBuffer first.`);
-        this.currentRendering = animName;
         return frames;
     }
 
@@ -172,6 +171,7 @@ export class DofusSprite extends AssetManager {
     /** Prepare canvas size and pre-build buffers for an animation. */
     async prepareAnimation(animName: string, scale: number, computeBounds = false, forcedSize?: number,): Promise<void> {
         const buffers = await this.buildBuffer(animName);
+        this.currentRendering = animName;
         const anim = this.animations.get(animName)!;
         this.renderer.setRenderSize(scale, anim.bounds, buffers, computeBounds, forcedSize);
     }

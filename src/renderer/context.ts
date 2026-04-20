@@ -1,7 +1,6 @@
-import type {RenderState} from '../readers/renderState.js';
-import {type Mat3, mat3Mul} from '../math.js';
+import type {RenderState} from '../readers/renderState';
+import {type Mat3, mat3Mul} from '../math';
 
-/** Immutable per-draw-call state snapshot (replaces Python's Context dataclass). */
 export interface RenderContext {
     readonly multiplicativeColor: readonly [number, number, number, number];
     readonly additiveColor: readonly [number, number, number, number];
