@@ -1,7 +1,8 @@
-import {indexedColorsToDict, parseLookStringColor, type RGB} from './colorUtilities';
+import {indexedColorsToDict, parseLookStringColor, rgbToInt, dictToIndexedColors , type RGB} from './colorUtilities';
 import {SubEntityCategory} from './enums';
 import type {BodyData} from "../data/types";
 import {getBodies} from "../data/body";
+import {getEnumKeyByValue} from "../utilities";
 
 export interface LookDict {
     bonesId: number;
@@ -152,6 +153,54 @@ export class Look {
         if (this.skins.length == 0) return undefined
         const bodies = await getBodies();
         return bodies.skinMapping.get(this.skins[0]!)
+    }
+
+    toB16String():string{
+        const encoder = new TextEncoder();
+        const bytes = encoder.encode(this.toString());
+        const hexArray = new Array(bytes.length);
+
+        for (let i = 0; i < bytes.length; i++)
+            hexArray[i] = bytes[i]!.toString(16).padStart(2, '0');
+        return hexArray.join('');
+    }
+
+    toDict():LookDict {
+          const subEntities: SubEntityLookDict[] = [];
+          for (const [category, subEntityMap] of this.subEntities) {
+            for (const subEntity of subEntityMap.values())
+              subEntities.push({
+                  bindingPointCategory: getEnumKeyByValue(SubEntityCategory, category as SubEntityCategory) ?? 'UNUSED' ,
+                  subEntityLook: subEntity.toDict()})
+          }
+
+        return {
+            bonesId:this.bone,
+            skins: this.skins,
+            scales: [Math.floor(this.size * 100)],
+            indexedColors: dictToIndexedColors(this.color),
+            subEntities: subEntities
+        }
+    }
+
+    toString(): string {
+        const components: string[] = [
+            this.bone ? String(this.bone) : '',
+            this.skins.map(skin => String(skin)).join(','),
+            Array.from(this.color, ([i, color]) => `${i}=${rgbToInt(color)}`).join(','),
+            String(Math.floor(this.size * 100))];
+
+        if (this.subEntities) {
+          const subEntities: string[] = [];
+          for (const [category, subEntityDict] of this.subEntities) {
+            for (const [index, subEntity] of subEntityDict) {
+              subEntities.push(`${category}@${index}=${subEntity.toString()}`);
+            }
+          }
+          components.push(subEntities.join(''));
+        }
+
+        return `{${components.join('|')}}`;
     }
 
 }

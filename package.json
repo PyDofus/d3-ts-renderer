@@ -2,6 +2,7 @@
   "name": "d3-ts-renderer",
   "version": "0.1.0",
   "type": "module",
+  "sideEffects": false,
   "files": [
     "dist"
   ],
@@ -10,23 +11,40 @@
   "types": "dist/index.d.ts",
   "exports": {
     ".": {
-      "import": "./dist/index.js",
-      "types": "./dist/index.d.ts"
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./node": {
+      "types": "./dist/headless.d.ts",
+      "import": "./dist/headless.js"
     }
   },
   "scripts": {
-    "build": "vite build",
-    "dev": "vite",
-    "typecheck": "tsc --noEmit"
+    "dev": "vite -c example/vite.config.ts",
+    "typecheck": "tsc --noEmit",
+    "build": "tsup",
+    "prepublishOnly": "npm run build"
   },
   "devDependencies": {
+    "@types/gl": "^6.0.5",
     "@types/node": "^25.6.0",
+    "gl": "^8.1.6",
+    "sharp": "^0.34.5",
+    "tsup": "^8.5.1",
     "tsx": "^4.21.0",
     "typescript": "^6.0.3",
     "vite": "^8.0.8"
   },
-  "dependencies": {
+  "peerDependencies": {
     "gl": "^8.1.6",
     "sharp": "^0.34.5"
+  },
+  "peerDependenciesMeta": {
+    "gl": {
+      "optional": true
+    },
+    "sharp": {
+      "optional": true
+    }
   }
 }

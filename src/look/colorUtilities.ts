@@ -12,10 +12,17 @@ export function rgbToInt(rgb: RGB | undefined): number {
 export function indexedColorsToDict(indexedColors: readonly number[] | undefined): Map<number, RGB> {
     if (!indexedColors) return new Map();
     const result = new Map<number, RGB>();
-    for (const i of indexedColors) {
+    for (const i of indexedColors)
         result.set((i >>> 24) & 0xff, intToRgb(i));
-    }
     return result;
+}
+
+export function dictToIndexedColors(colorDict: Map<number, RGB>): number[] {
+  const result: number[] = new Array(colorDict.size);
+  let i = 0;
+  for (const [key, value] of colorDict)
+    result[i++] = (key << 24) | rgbToInt(value);
+  return result;
 }
 
 export function parseLookStringColor(value: string, base = 10): Map<number, RGB> {

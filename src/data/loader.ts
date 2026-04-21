@@ -35,23 +35,34 @@ const enum DataBundle {
     Body = "bodiesdataroot",
 }
 
-export type DataConfig =
-    | { strategy: 'url'; basePath: string }
-    | { strategy: 'fs'; basePath: string; decodeImage?: ImageDecoder };
+export interface DataConfig {
+    strategy: 'url' | 'fs';
+    basePath: string;
+    decodeImage?: ImageDecoder;
+}
 
 
 export abstract class DataLoader {
     protected readonly _base: string;
+    protected readonly _decodeImage: ImageDecoder | undefined;
 
-    constructor(basePath: string) {
+    constructor(basePath: string, decodeImage?: ImageDecoder) {
         this._base = basePath.endsWith('/') ? basePath : `${basePath}/`;
+        this._decodeImage = decodeImage;
     }
+
+    protected abstract bytes(path: string): Promise<Uint8Array>;
 
     protected abstract json<T>(path: string): Promise<T>;
 
-    protected abstract binary(path: string): Promise<ArrayBuffer>;
+    protected abstract binary(path: string): Promise<ArrayBuffer>
 
-    protected abstract image(path: string): Promise<TextureSource>;
+    protected abstract imageBitmap(path: string): Promise<ImageBitmap>
+
+    protected async image(path: string): Promise<TextureSource> {
+        if (this._decodeImage) return this._decodeImage(await this.bytes(path), path);
+        return this.imageBitmap(path);
+    }
 
     protected async data<T>(name: string): Promise<Record<string, T>> {
         const raw = await this.json<MetadataRoot<T>>(`${StreamingAssets.Data}/${name}.json`);
@@ -91,65 +102,58 @@ export abstract class DataLoader {
 }
 
 class UrlLoader extends DataLoader {
-    protected async json<T>(path: string): Promise<T> {
+    private async fetchRes(path: string): Promise<Response> {
         const res = await fetch(this._base + path);
         if (!res.ok) throw new Error(`HTTP ${res.status} fetching ${path}`);
-        return res.json();
+        return res;
+    }
+
+    protected async json<T>(path: string): Promise<T> {
+        return (await this.fetchRes(path)).json();
     }
 
     protected async binary(path: string): Promise<ArrayBuffer> {
-        const res = await fetch(this._base + path);
-        if (!res.ok) throw new Error(`HTTP ${res.status} fetching ${path}`);
-        return res.arrayBuffer();
+        return (await this.fetchRes(path)).arrayBuffer();
     }
 
-    protected async image(path: string): Promise<TextureSource> {
-        const res = await fetch(this._base + path);
-        if (!res.ok) throw new Error(`HTTP ${res.status} fetching ${path}`);
-        return createImageBitmap(await res.blob());
+    protected async bytes(path: string): Promise<Uint8Array> {
+        const buf = await (await this.fetchRes(path)).arrayBuffer();
+        return new Uint8Array(buf);
+    }
+
+    protected async imageBitmap(path: string): Promise<ImageBitmap> {
+        const res = await this.fetchRes(path);
+        const blob = await res.blob();
+        return createImageBitmap(blob);
     }
 }
 
 class FsLoader extends DataLoader {
-    private readonly _decodeImage: ImageDecoder | undefined;
-
-    constructor(basePath: string, decodeImage?: ImageDecoder) {
-        super(basePath);
-        this._decodeImage = decodeImage;
-    }
-
-    private async readFile(path: string): Promise<Uint8Array> {
+    protected async bytes(path: string): Promise<Uint8Array> {
         const {readFile} = await import('node:fs/promises');
         return readFile(this._base + path);
     }
 
     protected async json<T>(path: string): Promise<T> {
-        const buf = await this.readFile(path);
+        const buf = await this.bytes(path);
         return JSON.parse(new TextDecoder().decode(buf));
     }
 
     protected async binary(path: string): Promise<ArrayBuffer> {
-        const buf = await this.readFile(path);
+        const buf = await this.bytes(path);
         return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer;
     }
 
-    protected async image(path: string): Promise<TextureSource> {
-        if (this._decodeImage) {
-            const bytes = await this.readFile(path);
-            return this._decodeImage(bytes, path);
-        }
-        if (typeof createImageBitmap !== 'undefined') {
-            const ab = await this.binary(path);
-            return createImageBitmap(new Blob([ab]));
-        }
-        throw new Error("No image decoder available — pass `decodeImage` in the 'fs' config (e.g. using sharp or @napi-rs/canvas) when running under Node.");
+    protected async imageBitmap(path: string): Promise<ImageBitmap> {
+        throw new Error("FsLoader cannot decode ImageBitmap in Node. Provide decodeImage in config or DataLoader constructor.");
     }
+
 }
 
 export function createDataLoader(config: DataConfig): DataLoader {
     switch (config.strategy) {
         case "url":
-            return new UrlLoader(config.basePath);
+            return new UrlLoader(config.basePath, config.decodeImage);
         case "fs":
             return new FsLoader(config.basePath, config.decodeImage);
     }

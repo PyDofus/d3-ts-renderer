@@ -39,64 +39,46 @@ sprite.renderFrame(0);
 
 ### Node — headless rendering
 
-Running the full renderer in Node needs three pieces:
+The default entry is browser-only and has no native dependencies. For headless
+Node rendering, install [`gl`](https://www.npmjs.com/package/gl) and
+[`sharp`](https://www.npmjs.com/package/sharp) alongside this package — they
+are declared as optional peer dependencies, so browser consumers won't pull
+them in:
 
-1. **A WebGL context.** Use [`gl`](https://www.npmjs.com/package/gl)
-   (headless-gl). It exposes WebGL1 only, which is why this library carries a
-   WebGL1 code path (see [WebGL1 / WebGL2](#webgl1--webgl2)).
-2. **A canvas shim** for `DofusSprite.create(look, canvas)`. `RendererContext`
-   only uses `canvas.getContext(...)` and `gl.canvas.{width,height}`, so a
-   minimal duck-typed object is enough.
-3. **An image decoder** for `.png` textures — pass a `decodeImage` callback to
-   the `fs` loader. [`sharp`](https://www.npmjs.com/package/sharp) and
-   [`@napi-rs/canvas`](https://www.npmjs.com/package/@napi-rs/canvas) both work.
+```bash
+npm install d3-ts-renderer gl sharp
+```
 
-Sketch:
+The `d3-ts-renderer/node` subpath bundles ready-made helpers for the three
+pieces Node needs: a headless WebGL1 context, a canvas shim, and a `sharp`-
+based image decoder.
 
 ```ts
-import createGL from 'gl';
-import sharp from 'sharp';
 import { configure, Look, DofusSprite } from 'd3-ts-renderer';
+import { decodeImage, createCanvas, saveToPng } from 'd3-ts-renderer/node';
 
 configure({
     strategy: 'fs',
     basePath: '/var/dofus-assets/',
-    decodeImage: async (bytes) => {
-        const { data, info } = await sharp(bytes)
-            .ensureAlpha()
-            .raw()
-            .toBuffer({ resolveWithObject: true });
-        return { data: new Uint8ClampedArray(data), width: info.width, height: info.height };
-    },
+    decodeImage,
 });
 
-const gl = createGL(1, 1, { stencil: true, alpha: true, premultipliedAlpha: false });
-const resizeExt = gl.getExtension('STACKGL_resize_drawingbuffer');
-if (!resizeExt) throw new Error('STACKGL_resize_drawingbuffer extension unavailable');
-const canvas = {
-    _w: 1,
-    _h: 1,
-    get width() { return this._w; },
-    set width(v: number) { this._w = v; resizeExt.resize(v, this._h); },
-    get height() { return this._h; },
-    set height(v: number) { this._h = v; resizeExt.resize(this._w, v); },
-    getContext(type: string) { return type === 'webgl' ? gl : null; },
-} as unknown as HTMLCanvasElement;
-
-const sprite = await DofusSprite.create(Look.fromString('{1|120,2195,3042,3069,3963|1=16777215,2=15335424,3=15335424,4=16777215,5=0,6=15335424|56}'), canvas, {numberFrame:1});
+const canvas = createCanvas();
+const sprite = await DofusSprite.create(
+    Look.fromString('{1|120,2195,3042,3069,3963|1=16777215,2=15335424,3=15335424,4=16777215,5=0,6=15335424|56}'),
+    canvas,
+    { numberFrame: 1 },
+);
 await sprite.prepareAnimation('AnimStatiqueExplo0_1', 2, true);
 sprite.renderFrame(0);
-
-// Read back pixels from the GL drawing buffer and encode as PNG/WebP with sharp, etc.
-const width = gl.drawingBufferWidth;
-const height = gl.drawingBufferHeight;
-const pixels = Buffer.alloc(width * height * 4);
-gl.readPixels(0, 0, width, height, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
-await sharp(pixels, {raw: { width, height, channels: 4 }}).png().flip().toFile('test.png');
+await saveToPng(canvas, 'test.png');
 ```
 
-Readback and image encoding are left to the caller — use `gl.readPixels` into a
-`Uint8Array`, then hand it to `sharp` (or equivalent) to produce the final file.
+If you need different encoding or a different GL/decoder stack, skip the
+subpath and wire up your own `decodeImage` callback plus a duck-typed canvas —
+`RendererContext` only uses `canvas.getContext(...)` and
+`gl.canvas.{width,height}`. [`@napi-rs/canvas`](https://www.npmjs.com/package/@napi-rs/canvas)
+is a drop-in alternative to `sharp` for decoding.
 
 ## WebGL1 / WebGL2
 
@@ -119,12 +101,12 @@ both contexts.
 
 `configure(config)` accepts a discriminated union:
 
-| strategy | description                                     | runtime |
-|----------|-------------------------------------------------|---------|
-| `url`    | `fetch()` assets from `basePath`                | browser |
-| `fs`     | `node:fs/promises` reads assets from `basePath` | node    |
+| strategy | description                                     | runtime       |
+|----------|-------------------------------------------------|---------------|
+| `url`    | `fetch()` assets from `basePath`                | browser, node |
+| `fs`     | `node:fs/promises` reads assets from `basePath` | node          |
 
-The `fs` variant also accepts a `decodeImage: (bytes, path) => TextureSource`
+config accepts a `decodeImage: (bytes, path) => TextureSource`
 hook for Node runtimes where `createImageBitmap` isn't available.
 
 Advanced users can skip the singleton and build their own loader instance with
@@ -135,19 +117,15 @@ Advanced users can skip the singleton and build their own loader instance with
 - `Look` — parse, build and serialise a Dofus look string
 - `DofusSprite` — the renderer entry point (bind to a `<canvas>`)
 - `configure` / `getLoader` / `createDataLoader` — asset loader setup
-- `Directions`, `SubEntityCategory`, color utilities
 
 ## Development
 
 ```bash
 npm install
-npm run dev       # vite dev server for the test harness in index.html
+npm run dev       # vite dev server for the test harness in example/index.html
 npm run typecheck
-npm run build     # emit library bundle to dist/
 ```
 
-The dev harness reads `VITE_DATA_STRATEGY` and `VITE_DATA_PATH` from `.env` and
-passes them to `configure()`.
 
 ### JetBrains IDE — GLSL syntax highlighting
 
@@ -162,9 +140,8 @@ Not yet implemented:
 
 - **Export** — save canvas contents as PNG / WebP / animated WebM
 - **Audio** — sound bank playback is not wired up
-- **Flash filters** — parsed from data but not applied at render time
 - **Flip** — horizontal mirroring of sprites
 - **Skin / graphic rendering**
+- **Flash filters** — parsed from data but not applied at render time
 - **Partial-data API** — fetch individual body / skinslot entries instead of
   the full metadata JSON
-- **`Look` serialisation** — round-trip helpers (`toString`, `toB16`, `toDict`)
