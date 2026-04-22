@@ -54,7 +54,6 @@ export class Buffer extends Array<BufferElement> {
         // Don't loop if the sub-animation is finished and looping is disabled.
         if (!node.sprite.subAnimLoop && frameNb >= frames.length) return;
 
-        // Scale + offset matrix combining parent look size and transfo translation.
         const scaleWithOffset = mat3Translation(transfo, parent.look.size);
         let transfoMatrix = node.transformation === null ? scaleWithOffset : mat3Mul(scaleWithOffset, node.transformation);
         if (node.sprite.flip) mat3FlipX(transfoMatrix)

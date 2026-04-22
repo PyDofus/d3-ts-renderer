@@ -29,9 +29,10 @@ export class DofusSprite extends AssetManager {
         parent: DofusSprite | null,
         numberFrame?: number,
         startFrame = 0,
+        isAnimMap?:boolean,
         subAnimLoop = true,
     ) {
-        super(look, openGl);
+        super(look, openGl, isAnimMap);
         this.parent = parent;
         this.renderer = new FrameRenderer(openGl, look);
         this.subAnimLoop = subAnimLoop;
@@ -45,11 +46,11 @@ export class DofusSprite extends AssetManager {
     static async create(
         look: Look,
         canvas: HTMLCanvasElement,
-        options: { boneName?: string; numberFrame?: number; startFrame?: number } = {},
+        options: { boneName?: string; numberFrame?: number; startFrame?: number; isMapAnimation?: boolean, subAnimLoop?: boolean} = {},
     ): Promise<DofusSprite> {
         const ctx = new RendererContext(canvas);
         ctx.unloadAllTextures();
-        const sprite = new DofusSprite(look, ctx, null, options.numberFrame, options.startFrame ?? 0);
+        const sprite = new DofusSprite(look, ctx, null, options.numberFrame, options.startFrame ?? 0, options.isMapAnimation, options.subAnimLoop);
         await sprite._init(options.boneName);
         await sprite._preloadSubEntities();
         return sprite;
@@ -57,7 +58,7 @@ export class DofusSprite extends AssetManager {
 
     /** Internal factory for sub-entities (shares parent's RendererContext). */
     private static async _createChild(look: Look, openGl: RendererContext, parent: DofusSprite, numberFrame?: number): Promise<DofusSprite> {
-        const sprite = new DofusSprite(look, openGl, parent, numberFrame, 0, parent.subAnimLoop);
+        const sprite = new DofusSprite(look, openGl, parent, numberFrame, parent.startFrame, parent.isMapAnimation, parent.subAnimLoop);
         await sprite._init();
         await sprite._preloadSubEntities();
         return sprite;
@@ -116,7 +117,7 @@ export class DofusSprite extends AssetManager {
         if (cached) return cached
         if (!this.animations.has(animName)) throw new Error(`Animation '${animName}' not found`);
         const anim = this.animations.get(animName)!;
-        const instance = await getAnimation(this.data.m_Name, anim);
+        const instance = await getAnimation(this.data.m_Name, anim, this.isMapAnimation);
         this._animInstances.set(animName, instance);
         return instance
     }

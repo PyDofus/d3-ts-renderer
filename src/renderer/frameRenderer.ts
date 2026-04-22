@@ -69,40 +69,35 @@ export class FrameRenderer {
         this.mask.reset();
 
         for (const elem of buffer) {
-            if (elem.context.maskFlags === MaskFlags.SetMask || elem.context.maskFlags === MaskFlags.ClearMask) {
-                this.mask.renderElement(elem);
-            } else {
-                this._renderNode(elem);
+            switch (elem.context.maskFlags) {
+                case MaskFlags.NONE:
+                    gl.disable(gl.STENCIL_TEST);
+                    this._renderNode(elem);
+                    break
+                case MaskFlags.ClearMask:
+                case MaskFlags.SetMask:
+                    this.mask.renderElement(elem);
+                    break
+                case MaskFlags.ObeyMask:
+                    gl.enable(gl.STENCIL_TEST);
+                    gl.stencilFunc(gl.EQUAL, this.mask.count, 0xff);
+                    gl.stencilOp(gl.KEEP, gl.KEEP, gl.KEEP);
+                    this._renderNode(elem);
+                    break
             }
         }
     }
 
     private _renderNode(bufferElement: BufferElement): void {
-        const gl = this._openGl.gl;
         const ctx = bufferElement.context;
-
         this._openGl.setupBlendMode(ctx.blendMode);
-
-        if (ctx.maskFlags === MaskFlags.NONE) {
-            gl.disable(gl.STENCIL_TEST);
-        } else {
-            gl.enable(gl.STENCIL_TEST);
-            gl.stencilFunc(gl.EQUAL, this.mask.count, 0xff);
-            gl.stencilOp(gl.KEEP, gl.KEEP, gl.KEEP);
-        }
-
         this._openGl.setRenderUniforms(ctx.multiplicativeColor, ctx.additiveColor, ctx.customColor, ctx.colorMatrix);
 
+        // I don't know how batch this and keep support for webgl1
         for (let i = 0; i < bufferElement.nodeElement.length; i++) {
             const element = bufferElement.nodeElement[i]!;
-            const transfo = bufferElement.transforms[i]!;
-
-            if (element.vertexes.mask === MaskFlags.SetMask || element.vertexes.mask === MaskFlags.ClearMask) {
-                this.mask.render(element, transfo);
-            } else {
-                this._openGl.setRenderUniformsPerVertex(element.vertexes.textureId, transfo);
-                element.vertexes.render(this._openGl, this._openGl.program);
-            }
+            this._openGl.setRenderUniformsPerVertex(element.vertexes.textureId, bufferElement.transforms[i]!);
+            element.vertexes.render(this._openGl, this._openGl.program);
         }
     }
 }

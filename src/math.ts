@@ -8,11 +8,19 @@
 export type Mat3 = Float32Array;
 
 export function mat3Identity(): Mat3 {
-    return new Float32Array([1, 0, 0, 0, 1, 0, 0, 0, 1]);
+    return new Float32Array([
+        1, 0, 0,
+        0, 1, 0,
+        0, 0, 1
+    ]);
 }
 
 export function mat3From(a00: number, a01: number, a02: number, a10: number, a11: number, a12: number, a20: number, a21: number, a22: number): Mat3 {
-    return new Float32Array([a00, a01, a02, a10, a11, a12, a20, a21, a22]);
+    return new Float32Array([
+        a00, a01, a02,
+        a10, a11, a12,
+        a20, a21, a22
+    ]);
 }
 
 export function mat3Scale(s: number): Mat3 {
@@ -57,7 +65,11 @@ export function mat3FlipX(m: Mat3): Mat3 {
  * Create a translation matrix with scale
  */
 export function mat3Translation(m: Mat3, scale: number): Mat3 {
-    return mat3From(1, 0, 0, 0, 1, 0, scale * m[2]!, scale * m[5]!, 1);
+    return mat3From(
+        1, 0, scale * m[2]!,
+        0, 1, scale * m[5]!,
+        0, 0, 1
+    );
 }
 
 export type Bounds2D = { xMin: number; yMin: number; xMax: number; yMax: number; };

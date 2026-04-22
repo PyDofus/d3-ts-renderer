@@ -8,6 +8,7 @@
     body { font-family: monospace; background: #1a1a2e; color: #eee; padding: 1rem; }
     label { display: block; margin-top: .5rem; font-size: .85rem; color: #aaa; }
     input, select { background: #16213e; color: #eee; border: 1px solid #555; padding: .4rem .6rem; width: 340px; margin-top: .2rem; }
+    select[multiple] { height: 90px; }
     button { margin-top: .8rem; padding: .4rem 1rem; background: #0f3460; color: #eee; border: 1px solid #555; cursor: pointer; }
     button:hover { background: #533483; }
     #canvas-wrap { margin-top: 1rem; background: repeating-conic-gradient(#222 0% 25%, #333 0% 50%) 0 0 / 16px 16px; display: inline-block; }
@@ -19,9 +20,38 @@
 <body>
   <h2>Dofus Sprite Renderer</h2>
 
+  <label>Map animation<input id="mapAnim" type="checkbox"/></label>
+
   <label>Look string (or hex b16)
-    <input id="look" type="text" value="{1|120,2195,3042,3069,3963|1=16777215,2=15335424,3=15335424,4=16777215,5=0,6=15335424|56}" />
+    <input id="look" type="text" value="{1|120,2195,4072,4941,3963,5716|1=13418918,2=4077879,3=16022817,4=14386944,5=4275500,6=9904435|56}" />
   </label>
+
+  <label>Bone name (empty for null)
+    <input id="boneName" type="text" value="" />
+  </label>
+
+
+  <label>Look Test
+    <select id="lookPresets">
+      <option value="{1|120,2195,4072,4941,3963,5716|1=13418918,2=4077879,3=16022817,4=14386944,5=4275500,6=9904435|56}">Souff</option>
+      <option value='{1|120,2195,3042,3069,3963|1=16777215,2=15335424,3=15335424,4=16777215,5=0,6=15335424|56|1@0={1420|||90}}'>Fami</option>
+      <option value='{2013|||100|2@0={2|120,2195,3042,3069,3963|1=16777215,2=15335424,3=15335424,4=16777215,5=0,6=15335424|56}}'>Monti</option>
+      <option value="{1|120,2195,3042,3069,3963|1=16777215,2=15335424,3=15335424,4=16777215,5=0,6=15335424|56|4@0={9703|||100}6@0={9702|||100}}">Aura</option>
+      <option value="{2069|||150}">Comte Harebourg</option>
+    </select>
+  </label>
+
+    <label>Bone name Test
+    <select id="BoneNamePresets">
+        <option value=""></option>
+        <option value="AnimEmoteJuggle">Juggle</option>
+        <option value='AnimEmoteKiss'>Kiss</option>
+        <option value='AnimEmoteEtendardKCorp'>Etendard KCorp</option>
+        <option value="AnimEmoteBlackdragon">Black dragon</option>
+        <option value="AnimEmoteSporthiver">Sport hiver</option>
+    </select>
+  </label>
+
   <label>Scale
     <input id="scale" type="number" value="2" min="0.1" max="10" step="0.1" style="width:80px" />
   </label>
@@ -58,10 +88,23 @@
     const errorEl   = document.getElementById('error');
     const infoEl    = document.getElementById('info');
     const canvas    = document.getElementById('canvas');
+    const presetsEl = document.getElementById('lookPresets');
+    const boneNameEl = document.getElementById('boneName');
+    const boneNamePresetsEl = document.getElementById('BoneNamePresets');
+    const mapAnimEl = document.getElementById('mapAnim');
 
     let rafId = null;
     let frameIndex = 0;
     let loadedSprite = null;
+
+    presetsEl.addEventListener('change', () => {
+      const input = document.getElementById('look');
+      input.value =  presetsEl.value;
+    });
+
+    boneNamePresetsEl.addEventListener('change', () => {
+        boneNameEl.value = boneNamePresetsEl.value;
+    })
 
     stopBtn.addEventListener('click', () => {
       if (rafId !== null) { cancelAnimationFrame(rafId); rafId = null; }
@@ -83,9 +126,10 @@
         const look = lookStr.match(/^[0-9a-fA-F]{6,}$/)
           ? Look.fromB16String(lookStr)
           : Look.fromString(lookStr);
-
+        const boneName = boneNameEl.value ? boneNameEl.value.trim() : undefined;
+        const isMapAnim = !!mapAnimEl.checked;
         infoEl.textContent = `Creating sprite for bone ${look.bone}…`;
-        const sprite = await DofusSprite.create(look, canvas);
+        const sprite = await DofusSprite.create(look, canvas, {boneName:boneName, isMapAnimation:isMapAnim});
         loadedSprite = sprite;
 
         const animNames = [...sprite.animations.keys()];
@@ -117,7 +161,7 @@
 
         await sprite.prepareAnimation(animName, scale, true);
 
-        const frameCount = sprite.getFrameCount(animName);
+        const frameCount = await sprite.getMaxFrame(animName);
         infoEl.textContent = `Animation '${animName}' — ${frameCount} frames - ${loadedSprite.data.defaultFrameRate} fps`;
 
         frameIndex = 0;

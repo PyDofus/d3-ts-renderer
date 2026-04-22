@@ -295,7 +295,7 @@ export class RendererContext {
     }
 
     // WebGL2 accepts transpose=true; WebGL1 forbids it.
-    // to do check possibility to build dirrectly transposed matrix or change operation to avodi transpose
+    // todo check possibility to build dirrectly transposed matrix or change operation to avodi transpose
     private _matScratch = new Float32Array(9);
     private _uploadMat3(loc: WebGLUniformLocation, m: Mat3): void {
         if (this._backend.supportsMatTranspose) this.gl.uniformMatrix3fv(loc, true, m);

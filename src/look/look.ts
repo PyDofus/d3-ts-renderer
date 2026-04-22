@@ -82,7 +82,8 @@ export class Look {
 
         const inner = s.startsWith('{') ? s.slice(1) : s;
         const stripped = inner.endsWith('}') ? inner.slice(0, -1) : inner;
-        const [boneStr, skinsStr, colorStr, sizeStr, subEntitiesStr] = stripped.split('|');
+        const [boneStr, skinsStr, colorStr, sizeStr, ...subEntitiesStrSplit] = stripped.split('|');
+        const subEntitiesStr = subEntitiesStrSplit.join("|")
 
         const bone = boneStr ? parseInt(boneStr ?? '0', base) : 0;
         const skins = skinsStr ? skinsStr.split(',').map(i => parseInt(i, base)) : [];

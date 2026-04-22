@@ -18,7 +18,7 @@ export const enum MaskFlags {
     NONE = 0,
     SetMask = 1,
     ObeyMask = 2,
-    ClearMask = 3,
+    ClearMask = 4,
 }
 
 export const enum BlendMode {

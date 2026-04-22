@@ -78,17 +78,18 @@ export abstract class DataLoader {
         return {skin, images: await this.images(path, skin.textures)};
     }
 
-    async loadAnimationData(boneName: string, animName: string): Promise<ArrayBuffer> {
-        return this.binary(`${StreamingAssets.Bones}/${boneName}/${animName}.dat`);
+    async loadAnimationData(boneName: string, animName: string, isMapAnimation?: boolean): Promise<ArrayBuffer> {
+        return this.binary(`${isMapAnimation? StreamingAssets.Animations: StreamingAssets.Bones}/${boneName}/${animName}.dat`);
     }
 
     async loadSkin(skinId: number): Promise<SkinBundle> {
         return this.loadSkinInternal(`${StreamingAssets.Skins}/${skinId}`);
     }
 
-    async loadBone(boneName: string): Promise<BoneBundle> {
-        const skin = await this.loadSkinInternal(`${StreamingAssets.Bones}/${boneName}`);
-        const bone = await this.json<AnimatedObjectDefinition>(`${StreamingAssets.Bones}/${boneName}/bone.json`);
+    async loadBone(boneName: string, isMapAnimation?: boolean): Promise<BoneBundle> {
+        const folder = `${isMapAnimation? StreamingAssets.Animations: StreamingAssets.Bones}/${boneName}`
+        const skin = await this.loadSkinInternal(folder);
+        const bone = await this.json<AnimatedObjectDefinition>(`${folder}/bone.json`);
         return {bone, skin};
     }
 

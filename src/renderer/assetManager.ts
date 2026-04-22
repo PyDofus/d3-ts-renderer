@@ -21,6 +21,7 @@ type AssetPartResult = [found: boolean, part: CustomPart, isCustomised: boolean]
 export abstract class AssetManager {
     readonly look: Look;
     readonly openGl: RendererContext;
+    isMapAnimation: boolean;
 
     data!: AnimatedObjectDefinition;
     boneAsset!: SkinAsset;
@@ -37,9 +38,10 @@ export abstract class AssetManager {
     private _dictPart = new Map<string, AssetPartResult>();
     private _processedPart = new Map<string, NodeElement>();
 
-    protected constructor(look: Look, openGl: RendererContext) {
+    protected constructor(look: Look, openGl: RendererContext, isMapAnimation?: boolean) {
         this.look = look;
         this.openGl = openGl;
+        this.isMapAnimation = isMapAnimation ?? false;
     }
 
     protected async _init(boneName?: string): Promise<void> {
@@ -56,7 +58,7 @@ export abstract class AssetManager {
 
     protected async _getBone(boneName?: string): Promise<void> {
         const resolved = boneName ?? (this.look.bone !== 1 ? String(this.look.bone) : '1-static');
-        const {bone, skin} = await getBoneData(resolved);
+        const {bone, skin} = await getBoneData(resolved, this.isMapAnimation);
         this.data = bone;
         this.boneAsset = skin.skin;
         this._loadTextures(skin.images, 'main');
@@ -208,17 +210,18 @@ export abstract class AssetManager {
 
     private _iterEntry(assetPart: SkinAssetPart): NodeElementGroup[] {
         const elements = this._walk(assetPart, null, false, 'symbolId');
+        // Group NodeElementSprite and NodeElementData by mask (like Python groupby)
+        // This avoids repeated mask checks and stencil update in _renderNode.
+        // Not sure if this is idiomatic in TypeScript.
         const groups: NodeElementGroup[] = [];
         let i = 0;
         while (i < elements.length) {
-            const first = elements[i]!;
-            const isData = 'vertexes' in first;
+            const key:number|undefined =  (elements[i] as any)?.vertexes?.mask;
             let j = i + 1;
-            while (j < elements.length && ('vertexes' in elements[j]!) === isData) j++;
+            while (j < elements.length && (elements[i] as any)?.vertexes?.mask === key) j++;
             groups.push(elements.slice(i, j) as NodeElementGroup);
             i = j;
         }
-        // todo change this (come from python groupby),
         return groups;
     }
 

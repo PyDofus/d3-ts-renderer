@@ -29,4 +29,3 @@ export function isSpriteGroup(group: NodeElementGroup): group is readonly NodeEl
     const first = group[0];
     return first !== undefined && 'sprite' in first;
 }
-// todo rework isdata and is sprite

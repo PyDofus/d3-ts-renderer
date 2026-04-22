@@ -4,10 +4,10 @@ import type {Animation, BoneBundle} from './types';
 import {getLoader} from './loader';
 
 
-export async function getBoneData(boneName: string): Promise<BoneBundle> {
+export async function getBoneData(boneName: string, isMapAnimation?:boolean): Promise<BoneBundle> {
     const loader = getLoader();
     try {
-        return await loader.loadBone(boneName);
+        return await loader.loadBone(boneName, isMapAnimation);
     } catch (err) {
         if (boneName === "666") throw err;
         try {
@@ -18,7 +18,7 @@ export async function getBoneData(boneName: string): Promise<BoneBundle> {
     }
 }
 
-export async function getAnimation(boneName: string, animation: Animation): Promise<AnimationInstance> {
-    const data = await getLoader().loadAnimationData(boneName, animation.name);
+export async function getAnimation(boneName: string, animation: Animation, isMapAnimation?:boolean): Promise<AnimationInstance> {
+    const data = await getLoader().loadAnimationData(boneName, animation.name, isMapAnimation);
     return new AnimationInstance(new BinaryReader(data));
 }
