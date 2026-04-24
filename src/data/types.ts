@@ -172,3 +172,99 @@ export interface BoneBundle {
     bone: AnimatedObjectDefinition;
     skin: SkinBundle;
 }
+
+export interface AudioManagerLibrary {
+  m_availablePlatformNames: string[];
+  m_masterBankIndex: number;
+  m_masterStringsBankIndex: number;
+  m_masterBusIndex: number;
+  m_bankInfoSet: BankInfoSet;
+  m_eventInfoSet: EventInfoSet;
+  m_busInfoSet: BusInfoSet;
+  m_parameterInfoSet: ParameterInfoSet;
+  m_banksEventsRelations: number[];
+  m_eventsBanksRelations: number[];
+  m_eventsParametersRelations: number[];
+}
+
+export interface BankInfoSet {
+  m_entries: BankInfo[];
+}
+
+export interface BankInfo {
+  guid: string;
+  path: string;
+  relationalEventIndex: number;
+  relationalEventCount: number;
+  flags: number;
+}
+
+export interface EventInfoSet {
+  m_entries: EventInfo[];
+}
+
+export interface EventInfo {
+  guid: string;
+  path: string;
+  relationalBankIndex: number;
+  relationalBankCount: number;
+  relationalParameterIndex: number;
+  relationalParameterCount: number;
+  length: number;
+  minimumDistance: number;
+  maximumDistance: number;
+  flags: number;
+}
+
+export interface BusInfoSet {
+  m_entries: BusInfo[];
+}
+
+export interface BusInfo {
+  guid: string;
+  path: string;
+}
+
+export interface ParameterInfoSet {
+  m_entries: ParameterInfo[];
+}
+
+export interface ParameterInfo {
+  guid: string;
+  path: string;
+  name: string;
+  id1: number;
+  id2: number;
+  minimum: number;
+  maximum: number;
+  defaultValue: number;
+  flags: number;
+  labels: string[];
+}
+
+export interface SoundBoneData {
+    animSounds: Record<string, SoundAnimationData>;
+}
+
+export interface SoundAnimationData {
+    eventNames: string[];
+    startFrames: string[];
+    guids: string[];
+    loopingEventNames: string[];
+}
+
+export interface Playlist {
+    entries: FmodTrigger[];
+}
+
+export interface FmodTrigger {
+    type: string;
+    start: number;
+    sampleFile: string;
+    instrumentId: string;
+    playlist?: Playlist;
+}
+
+export interface FmodEvent {
+    triggers: FmodTrigger[];
+}

@@ -1,5 +1,5 @@
 import { configure, Look, DofusSprite, type DataConfig } from '../src';
-import { decodeImage, createCanvas, saveToPng} from '../src/headless/export';
+import { decodeImage, createCanvas, saveToPng } from '../src/headless/export';
 
 const config: DataConfig = {strategy: 'url', basePath: 'https://static.souff.fr/', decodeImage}
 // or
@@ -7,7 +7,6 @@ const config: DataConfig = {strategy: 'url', basePath: 'https://static.souff.fr/
 
 configure(config);
 const canvas = createCanvas();
-const sprite = await DofusSprite.create(Look.fromString('{1|120,2195,3042,3069,3963|1=16777215,2=15335424,3=15335424,4=16777215,5=0,6=15335424|56}'), canvas, {numberFrame:1});
-await sprite.prepareAnimation('AnimStatiqueExplo0_1', 4, true);
-sprite.renderFrame(0);
+const sprite = await DofusSprite.create(Look.fromString('{1|3963|3=15335424}'), canvas);
+sprite.renderSkinAsset(-1, "Bouclier_1",5);
 await saveToPng(canvas, 'test.png');

@@ -15,8 +15,8 @@
       "import": "./dist/index.js"
     },
     "./node": {
-      "types": "./dist/headless.d.ts",
-      "import": "./dist/headless.js"
+      "types": "./dist/node.d.ts",
+      "import": "./dist/node.js"
     }
   },
   "scripts": {

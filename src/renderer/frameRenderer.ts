@@ -47,13 +47,13 @@ export class FrameRenderer {
         return [(bounds.width ?? 1) * s, (bounds.height ?? 1) * s, (bounds.x ?? 0) * s, (bounds.y ?? 0) * s];
     }
 
-    setRenderSize(scale: number, bounds: Rectf | null, frames: BufferFrames, compute = false, forcedSize?: number): void {
+    setRenderSize(scale: number, bounds: Rectf | null, frames: BufferFrames, compute = false, forcedSize?: number, flip = false): void {
         let [w, h, ox, oy] = this.getAnimationSize(bounds, frames, compute);
         if (forcedSize) {
             const minDim = Math.min(w, h);
             if (minDim > 0) scale *= forcedSize / minDim;
         }
-        this._openGl.setBound(w, h, ox, oy, scale);
+        this._openGl.setBound(w, h, ox, oy, scale, flip);
     }
 
     /**

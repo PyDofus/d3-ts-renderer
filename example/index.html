@@ -56,6 +56,8 @@
     <input id="scale" type="number" value="2" min="0.1" max="10" step="0.1" style="width:80px" />
   </label>
 
+  <label>Audio <input id="audioToggle" type="checkbox" checked/></label>
+
   <br/>
   <button id="loadBtn">Load Look</button>
 
@@ -66,6 +68,9 @@
     <br/>
     <button id="renderBtn">Render</button>
     <button id="stopBtn" style="display:none">Stop</button>
+    <button id="pngBtn">Save PNG</button>
+    <button id="webpBtn">Save WebP</button>
+    <button id="webmBtn">Save WebM</button>
   </div>
 
   <div id="canvas-wrap"><canvas id="canvas" width="1" height="1"></canvas></div>
@@ -73,7 +78,7 @@
   <pre id="error"></pre>
 
   <script type="module">
-    import { Look, DofusSprite, configure } from '../src/index.ts';
+    import { DofusSprite, configure, SpritePlayback, saveToPng, saveToWebp, saveToWebm, Look } from '../src/index.ts';
 
     configure({
       strategy: import.meta.env.VITE_DATA_STRATEGY ?? 'url',
@@ -83,6 +88,9 @@
     const loadBtn   = document.getElementById('loadBtn');
     const renderBtn = document.getElementById('renderBtn');
     const stopBtn   = document.getElementById('stopBtn');
+    const pngBtn    = document.getElementById('pngBtn');
+    const webpBtn   = document.getElementById('webpBtn');
+    const webmBtn   = document.getElementById('webmBtn');
     const animWrap  = document.getElementById('anim-wrap');
     const animSel   = document.getElementById('anim');
     const errorEl   = document.getElementById('error');
@@ -92,57 +100,102 @@
     const boneNameEl = document.getElementById('boneName');
     const boneNamePresetsEl = document.getElementById('BoneNamePresets');
     const mapAnimEl = document.getElementById('mapAnim');
+    const audioToggleEl = document.getElementById('audioToggle');
+    const lookEl = document.getElementById('look')
+    const scaleEl = document.getElementById('scale')
 
-    let rafId = null;
-    let frameIndex = 0;
     let loadedSprite = null;
+    let currentFrame = 0;
+    const playback = new SpritePlayback();
+
+    const showError = err => {
+      errorEl.textContent = err instanceof Error ? `${err.name}: ${err.message}\n${err.stack ?? ''}` : String(err);
+    };
+
+    const getScale = () => parseFloat(scaleEl.value) || 2;
 
     presetsEl.addEventListener('change', () => {
-      const input = document.getElementById('look');
-      input.value =  presetsEl.value;
+      lookEl.value = presetsEl.value;
     });
 
     boneNamePresetsEl.addEventListener('change', () => {
-        boneNameEl.value = boneNamePresetsEl.value;
-    })
+      boneNameEl.value = boneNamePresetsEl.value;
+    });
 
-    stopBtn.addEventListener('click', () => {
-      if (rafId !== null) { cancelAnimationFrame(rafId); rafId = null; }
+    function stopPlayback() {
+      playback.stop();
       stopBtn.style.display = 'none';
       renderBtn.style.display = '';
-    });
+    }
+
+    stopBtn.addEventListener('click', stopPlayback);
 
     loadBtn.addEventListener('click', async () => {
       errorEl.textContent = '';
       infoEl.textContent = 'Loading…';
-      if (rafId !== null) { cancelAnimationFrame(rafId); rafId = null; }
+      playback.stop();
       animWrap.style.display = 'none';
       loadedSprite = null;
 
       try {
-        const lookStr = document.getElementById('look').value.trim();
+        const lookStr = lookEl.value.trim();
         if (!lookStr) throw new Error('Look string is required');
 
-        const look = lookStr.match(/^[0-9a-fA-F]{6,}$/)
-          ? Look.fromB16String(lookStr)
-          : Look.fromString(lookStr);
+        const look = Look.fromString(lookStr);
         const boneName = boneNameEl.value ? boneNameEl.value.trim() : undefined;
-        const isMapAnim = !!mapAnimEl.checked;
+        const isMapAnimation = !!mapAnimEl.checked;
         infoEl.textContent = `Creating sprite for bone ${look.bone}…`;
-        const sprite = await DofusSprite.create(look, canvas, {boneName:boneName, isMapAnimation:isMapAnim});
-        loadedSprite = sprite;
+        loadedSprite = await DofusSprite.create(look, canvas, { boneName, isMapAnimation });
 
-        const animNames = [...sprite.animations.keys()];
-        animSel.innerHTML = animNames
-          .map(n => `<option value="${n}">${n}</option>`)
-          .join('');
+        const animNames = [...loadedSprite.animations.keys()];
+        animSel.innerHTML = animNames.map(n => `<option value="${n}">${n}</option>`).join('');
 
         animWrap.style.display = '';
         renderBtn.style.display = '';
         stopBtn.style.display = 'none';
         infoEl.textContent = `Loaded — ${animNames.length} animation(s) available`;
       } catch (err) {
-        errorEl.textContent = err instanceof Error ? `${err.name}: ${err.message}\n${err.stack ?? ''}` : String(err);
+        showError(err);
+        infoEl.textContent = '';
+      }
+    });
+
+    pngBtn.addEventListener('click', async () => {
+      if (!loadedSprite) return;
+      errorEl.textContent = '';
+      try {
+        stopPlayback();
+        loadedSprite.renderFrame(currentFrame);
+        await saveToPng(canvas, `frame_${currentFrame}.png`);
+      } catch (err) { showError(err); }
+    });
+
+    webpBtn.addEventListener('click', async () => {
+      if (!loadedSprite) return;
+      errorEl.textContent = '';
+      try {
+        stopPlayback();
+        const animName = animSel.value;
+        infoEl.textContent = `Encoding '${animName}' to animated WebP…`;
+        await saveToWebp(loadedSprite, {animName, scale: getScale(), filename: `${animName}.webp`,});
+        infoEl.textContent = `Saved ${animName}.webp`;
+      } catch (err) {
+        showError(err);
+        infoEl.textContent = '';
+      }
+    });
+
+    webmBtn.addEventListener('click', async () => {
+      if (!loadedSprite) return;
+      errorEl.textContent = '';
+      try {
+        stopPlayback();
+        const animName = animSel.value;
+        infoEl.textContent = `Recording '${animName}' to WebM…`;
+        await saveToWebm(loadedSprite, {animName, scale: getScale(), filename: `${animName}.webm`, audioPlayer: playback.audioPlayer ?? undefined});
+        infoEl.textContent = `Saved ${animName}.webm`;
+      } catch (err) {
+        showError(err);
         infoEl.textContent = '';
       }
     });
@@ -150,38 +203,20 @@
     renderBtn.addEventListener('click', async () => {
       if (!loadedSprite) return;
       errorEl.textContent = '';
-      if (rafId !== null) { cancelAnimationFrame(rafId); rafId = null; }
-
       try {
-        const sprite   = loadedSprite;
-        const animName = animSel.value || undefined;
-        const scale    = parseFloat(document.getElementById('scale').value) || 2;
-
+        const animName = animSel.value;
         infoEl.textContent = `Preparing animation '${animName}'…`;
 
-        await sprite.prepareAnimation(animName, scale, true);
-
-        const frameCount = await sprite.getMaxFrame(animName);
-        infoEl.textContent = `Animation '${animName}' — ${frameCount} frames - ${loadedSprite.data.defaultFrameRate} fps`;
-
-        frameIndex = 0;
         renderBtn.style.display = 'none';
         stopBtn.style.display = '';
 
-        const MS_PER_FRAME = 1000 / loadedSprite.data.defaultFrameRate;
-        let lastTime = 0;
-
-        function tick(time) {
-          rafId = requestAnimationFrame(tick);
-          if (time - lastTime < MS_PER_FRAME) return;
-          lastTime = time;
-          sprite.renderFrame(frameIndex++);
-        }
-        rafId = requestAnimationFrame(tick);
-
+        const frameCount = await playback.play(loadedSprite, animName, {scale: getScale(), audio: audioToggleEl.checked, onFrame: i => { currentFrame = i; }});
+        infoEl.textContent = `Animation '${animName}' — ${frameCount} frames - ${loadedSprite.data.defaultFrameRate} fps`;
       } catch (err) {
-        errorEl.textContent = err instanceof Error ? `${err.name}: ${err.message}\n${err.stack ?? ''}` : String(err);
+        showError(err);
         infoEl.textContent = '';
+        renderBtn.style.display = '';
+        stopBtn.style.display = 'none';
       }
     });
   </script>

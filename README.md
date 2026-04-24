@@ -77,8 +77,7 @@ await saveToPng(canvas, 'test.png');
 If you need different encoding or a different GL/decoder stack, skip the
 subpath and wire up your own `decodeImage` callback plus a duck-typed canvas —
 `RendererContext` only uses `canvas.getContext(...)` and
-`gl.canvas.{width,height}`. [`@napi-rs/canvas`](https://www.npmjs.com/package/@napi-rs/canvas)
-is a drop-in alternative to `sharp` for decoding.
+`gl.canvas.{width,height}`.
 
 ## WebGL1 / WebGL2
 
@@ -138,10 +137,13 @@ comment above each string tells the IDE which injection to apply.
 
 Not yet implemented:
 
-- **Export** — save canvas contents as PNG / WebP / animated WebM
-- **Audio** — sound bank playback is not wired up
-- **Flip** — horizontal mirroring of sprites
-- **Skin / graphic rendering**
+- **sub sprite** rework how sub sprite animation are handled to avoid return to frame 0 when the main animation is finished
+- **sub sprite** sound/animation mismatch after looping
 - **Flash filters** — parsed from data but not applied at render time
 - **Partial-data API** — fetch individual body / skinslot entries instead of
   the full metadata JSON
+- **snap shader**
+- ?? texture: check perf with webm or other formats + check png without fpng
+- ?? flip directly in shader (same as orientation flip) when export to avoid flip in ffmpeg 
+
+Items marked with “??” are experimental ideas. I’m not sure yet whether they will improve performance.

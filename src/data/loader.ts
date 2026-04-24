@@ -1,38 +1,42 @@
 import type {
-    AnimatedObjectDefinition,
+    AnimatedObjectDefinition, AudioManagerLibrary,
     BodyData,
     BoneBundle,
+    FmodEvent,
     MetadataRoot,
     SkinAsset,
     SkinBundle,
-    SkinSlotRuleData,
+    SkinSlotRuleData, SoundBoneData,
     TextureSource
 } from './types';
 
 export type ImageDecoder = (bytes: Uint8Array, path: string) => Promise<TextureSource>;
 
 const enum StreamingAssets {
-    Map_Data = "Map/Data",
-    Map_Textures1 = "Map/Textures/1x",
-    Map_Textures2 = "Map/Textures/2x",
-    Map_Textures4 = "Map/Textures/4x",
-    Map_Textures_Effects = "Map/Textures/Effects",
-    Data = "Data",
-    Picto_Items = "Picto/Items",
-    Picto_Monsters = "Picto/Monsters",
-    Picto_Spells = "Picto/Spells",
-    Picto_UI = "Picto/UI",
-    Picto_Worldmaps = "Picto/Worldmaps",
-    Animations = "Animations/Props",
-    Skins = "Characters/Skins",
-    Bones = "Characters/Bones",
-    I18n = "I18n",
-    Audio = "Audio/Banks/Desktop",
+    aa = "aa",
+    Map_Data = "Content/Map/Data",
+    Map_Textures1 = "Content/Map/Textures/1x",
+    Map_Textures2 = "Content/Map/Textures/2x",
+    Map_Textures4 = "Content/Map/Textures/4x",
+    Map_Textures_Effects = "Content/Map/Textures/Effects",
+    Data = "Content/Data",
+    Picto_Items = "Content/Picto/Items",
+    Picto_Monsters = "Content/Picto/Monsters",
+    Picto_Spells = "Content/Picto/Spells",
+    Picto_UI = "Content/Picto/UI",
+    Picto_Worldmaps = "Content/Picto/Worldmaps",
+    Animations = "Content/Animations/Props",
+    Skins = "Content/Characters/Skins",
+    Bones = "Content/Characters/Bones",
+    I18n = "Content/I18n",
+    Audio = "Content/Audio/Banks/Desktop",
 }
 
-const enum DataBundle {
+const enum BundleFile {
     SkinSlot = "skinslotsrulesdataroot",
     Body = "bodiesdataroot",
+    SoundBone = "soundbonesdataroot",
+    audioLib = "Assets/Configuration/Audio/AudioManagerLibrary.asset"
 }
 
 export interface DataConfig {
@@ -94,12 +98,29 @@ export abstract class DataLoader {
     }
 
     async loadBodies(): Promise<Record<string, BodyData>> {
-        return this.data(DataBundle.Body);
+        return this.data(BundleFile.Body);
     }
 
     async loadSkinSlots(): Promise<Record<string, SkinSlotRuleData>> {
-        return this.data(DataBundle.SkinSlot)
+        return this.data(BundleFile.SkinSlot)
     }
+
+    async loadSoundBones(): Promise<Record<string,SoundBoneData>> {
+        return this.data(BundleFile.SoundBone)
+    }
+
+    async loadAudioLib(): Promise<AudioManagerLibrary> {
+        return this.json(`${StreamingAssets.aa}/${BundleFile.audioLib}`)
+    }
+
+    async fmodEvent(eventPath:string): Promise<FmodEvent> {
+        return this.json(`${StreamingAssets.Audio}/${eventPath}/info.json`)
+    }
+
+    async audioBytes(soundPath: string): Promise<ArrayBuffer> {
+        return this.binary(`${StreamingAssets.Audio}/${soundPath}`);
+    }
+
 }
 
 class UrlLoader extends DataLoader {

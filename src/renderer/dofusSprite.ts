@@ -1,13 +1,15 @@
 import {getAnimation} from '../data/boneLoader';
 import type {Look} from '../look/look';
-import {type Directions} from '../data/directions';
+import {type Directions, flipAnimNameString} from '../data/directions';
 import {getAnimName, getRelatedChildAnim} from '../data/animation';
 import type {AnimationInstance} from '../readers/animationInstance';
-import {type Mat3, mat3Scale} from '../math';
+import {type Mat3, mat3Identity, mat3Scale} from '../math';
+import {RenderState} from '../readers/renderState';
 import {AssetManager} from './assetManager';
 import {Buffer, type BufferFrames} from './buffer';
 import {FrameRenderer} from './frameRenderer';
 import {RendererContext} from './rendererContext';
+import {getAudioManager, type SoundEvent} from '../data/audio';
 
 export class DofusSprite extends AssetManager {
     readonly parent: DofusSprite | null;
@@ -170,11 +172,45 @@ export class DofusSprite extends AssetManager {
     // ── Rendering ─────────────────────────────────────────────────────────────────
 
     /** Prepare canvas size and pre-build buffers for an animation. */
-    async prepareAnimation(animName: string, scale: number, computeBounds = false, forcedSize?: number,): Promise<void> {
+    async prepareAnimation(animName: string, scale: number, computeBounds = false, flip = false, forcedSize?: number): Promise<number> {
+        if (!this.animations.has(animName)) {
+            const flipped = flipAnimNameString(animName)
+            if (!this.animations.has(flipped))
+                throw new Error(`Animation '${animName}' not found`);
+            flip = true;
+            animName = flipped;
+        }
+
         const buffers = await this.buildBuffer(animName);
         this.currentRendering = animName;
         const anim = this.animations.get(animName)!;
-        this.renderer.setRenderSize(scale, anim.bounds, buffers, computeBounds, forcedSize);
+        this.renderer.setRenderSize(scale, anim.bounds, buffers, computeBounds, forcedSize, flip);
+        return buffers.length
+    }
+
+    /** Render a single skin asset (by graphic index or symbol name) to the canvas. */
+    renderSkinAsset(graphic: number = -1, symbolName?: string, scale: number = 1.0): void {
+        const customIndex = this.getSymbolNameIndex(symbolName, true);
+        if (graphic < 0 && customIndex < 0) {
+            throw new Error(`You must to define: graphic (0-${this.data.graphics.length-1}) or symbolName ${this.customSymbolRefNames().join(", ")}`);
+        }
+
+        const state = new RenderState();
+        state.spriteIndex = graphic;
+        state.customisationIndex = customIndex;
+
+        const [found, skinPart] = this.getSkinAssetPart(state);
+        if (!found || skinPart === null) {
+            throw new Error(`Graphic ${graphic} not found or ${symbolName} not found in the skin asset`);
+        }
+        const processedPart = this.processPart(skinPart);
+
+        const buffer = new Buffer();
+        buffer.appendNode(processedPart, 1, state, mat3Identity(), this.look.flatColorArray);
+
+        const frames: BufferFrames = [buffer];
+        this.renderer.setRenderSize(scale, null, frames, true);
+        this.renderer.renderFrame(frames, 0);
     }
 
     /** Render frame `frameIndex` to the canvas. Call prepareAnimation first. */
@@ -215,5 +251,35 @@ export class DofusSprite extends AssetManager {
         const existing = this._subEntitySprites.get(index);
         if (existing) return existing;
         throw new Error(`Sub-entity '${index}' not pre-loaded. This is a bug.`);
+    }
+
+    // ── Audio ─────────────────────────────────────────────────────────────────────
+
+    /** Sound-bank key for the current animation (strip trailing direction index). */
+    currentAnimSoundName(): string | null {
+        if (this.currentRendering === null) return null;
+        const idx = this.currentRendering.lastIndexOf('_');
+        const baseAnim = idx === -1 ? this.currentRendering : this.currentRendering.slice(0, idx);
+        return this.look.bone === 1 ? `${this.data.m_Name}/${baseAnim}` : baseAnim;
+    }
+
+    /** All [soundName, boneId] pairs for the current anim and sub-entities. */
+    currentSoundData(): Array<[string, number]> {
+        const soundKeys: Array<[string, number]> = [];
+        const name = this.currentAnimSoundName();
+        if (name) soundKeys.push([name, this.look.bone]);
+        for (const sub of this._subEntitySprites.values()) {
+            const subName = sub.currentAnimSoundName();
+            if (subName) soundKeys.push([subName, sub.look.bone]);
+        }
+        return soundKeys;
+    }
+
+    /** Resolve the current animation's sound events (path and start time in seconds). */
+    async currentSoundEvents(): Promise<SoundEvent[]> {
+        const keys = this.currentSoundData();
+        if (keys.length === 0) return [];
+        const manager = await getAudioManager();
+        return manager.getSoundAnim(keys, this.data.defaultFrameRate);
     }
 }

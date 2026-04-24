@@ -302,4 +302,8 @@ export abstract class AssetManager {
         this.data.exposedNodeNames.push(symbolName);
         return this.data.exposedNodeNames.length - 1;
     }
+
+    customSymbolRefNames(): string[] {
+        return [...this._customSymbolRef.keys()]
+    }
 }

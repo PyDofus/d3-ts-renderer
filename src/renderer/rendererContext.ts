@@ -244,24 +244,27 @@ export class RendererContext {
 
     // ── bounds / size ─────────────────────────────────────────────────────────────
 
-    setBound(width: number, height: number, offsetX: number, offsetY: number, scale: number): void {
+    setBound(width: number, height: number, offsetX: number, offsetY: number, scale: number, flip = false): void {
         const gl = this.gl;
         const w = Math.ceil(width * scale);
         const h = Math.ceil(height * scale);
         this.size = [w, h];
-        this.offset = [offsetX * scale, offsetY * scale];
+        this.offset = [(flip ? width - offsetX: offsetX) * scale, offsetY * scale];
 
         gl.canvas.width = w;
         gl.canvas.height = h;
         gl.viewport(0, 0, w, h);
 
+        const sfx = flip ? -2 / width : 2 / width;
+        const sfy =2 / height;
+        const ox = flip ? offsetX + width : offsetX;
+
         this.useProgram(this.program);
-        this._setUniform2f('size_factor', 2 / width, 2 / height);
-        this._setUniform2f('offset', offsetX, offsetY);
-        // also set for mask program
+        this._setUniform2f('size_factor', sfx, sfy);
+        this._setUniform2f('offset', ox, offsetY);
         this.useProgram(this.maskProgram);
-        this._setUniformForProgram(this.maskProgram, 'size_factor_m', loc => gl.uniform2f(loc, 2 / width, 2 / height));
-        this._setUniformForProgram(this.maskProgram, 'offset_m', loc => gl.uniform2f(loc, offsetX, offsetY));
+        this._setUniformForProgram(this.maskProgram, 'size_factor_m', loc => gl.uniform2f(loc, sfx, sfy));
+        this._setUniformForProgram(this.maskProgram, 'offset_m', loc => gl.uniform2f(loc, ox, offsetY));
     }
 
     // ── per-draw uniforms ─────────────────────────────────────────────────────────
