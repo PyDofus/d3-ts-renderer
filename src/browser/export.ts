@@ -1,5 +1,8 @@
 import type { DofusSprite } from '../renderer/dofusSprite';
+import type { SoundEvent } from '../data/audio';
 import { SpriteAudioPlayer } from './audio';
+import {Output, BufferTarget, WebMOutputFormat, CanvasSource, AudioBufferSource, QUALITY_HIGH} from 'mediabunny';
+import { fourcc, readU16LE, readU24LE, readU32LE, writeFourCC, writeU16LE, writeU24LE, writeU32LE, concatBytes} from '../readers/binaryReader';
 
 
 export async function saveToPng(canvas: HTMLCanvasElement, filename = 'frame.png'): Promise<Blob> {
@@ -11,8 +14,7 @@ export async function saveToPng(canvas: HTMLCanvasElement, filename = 'frame.png
 export interface SaveWebpBrowserOptions {
     animName: string;
     scale?: number;
-    computeBounds?: boolean;
-    flip?: boolean;
+    flip?: boolean
     forcedSize?: number;
     filename?: string;
     /** 0..1, passed to canvas.toBlob. Defaults to 0.9. */
@@ -30,18 +32,15 @@ export interface SaveWebpBrowserOptions {
  * encoding in parallel, then muxed into an animated WebP.
  */
 export async function saveToWebp(sprite: DofusSprite, options: SaveWebpBrowserOptions): Promise<Blob> {
-    const { animName, scale = 1, computeBounds = true, flip = false, forcedSize, filename, quality = 0.9, loop = 0, concurrency = 4 } = options;
+    const { animName, scale = 1, forcedSize, filename, quality = 0.9, loop = 0, concurrency = 4, flip=false } = options;
 
-    const frameCount = await sprite.prepareAnimation(animName, scale, computeBounds, flip, forcedSize);
+    const frameCount = await sprite.prepareAnimation(animName, scale, true, flip, false, forcedSize);
     if (frameCount === 0) throw new Error(`Animation '${animName}' has no frames`);
 
     const canvas = sprite.openGl.gl.canvas as HTMLCanvasElement;
     const gl = getGl(canvas);
     const width = gl.drawingBufferWidth;
     const height = gl.drawingBufferHeight;
-
-    const frameDurMs = Math.max(1, Math.round(1000 / sprite.data.defaultFrameRate));
-    const rowBytes = width * 4;
 
     const rawFrames: Uint8ClampedArray[] = [];
     for (let i = 0; i < frameCount; i++) {
@@ -67,6 +66,7 @@ export async function saveToWebp(sprite: DofusSprite, options: SaveWebpBrowserOp
 
     // Parse each per-frame WebP and mux into an animated WebP.
     const parsedFrames = await Promise.all(frameBlobs.map(b => parseWebp(b)));
+    const frameDurMs = Math.max(1, Math.round(1000 / sprite.data.defaultFrameRate));
     const blob = muxAnimatedWebp(parsedFrames, width, height, frameDurMs, loop);
 
     if (filename) downloadBlob(blob, filename);
@@ -77,8 +77,7 @@ export async function saveToWebp(sprite: DofusSprite, options: SaveWebpBrowserOp
 export interface SaveWebmBrowserOptions {
     animName: string;
     scale?: number;
-    computeBounds?: boolean;
-    flip?: boolean;
+    flip?: boolean
     forcedSize?: number;
     filename?: string;
     /** Mix sprite sound events into the recording. Defaults to true. */
@@ -98,18 +97,124 @@ const WEBM_MIME_CANDIDATES = [
 ];
 
 /**
- * Record a sprite animation (plus its sound events) into a WebM Blob via MediaRecorder.
+ * Record a sprite animation (plus its sound events) into a WebM Blob.
+ *
+ * Picks WebCodecs when supported and falls back to MediaRecorder otherwise.
  */
 export async function saveToWebm(sprite: DofusSprite, options: SaveWebmBrowserOptions): Promise<Blob> {
-    const { animName, scale = 1, computeBounds = true, flip = false, forcedSize, filename, audio = true, audioPlayer, videoBitsPerSecond } = options;
+    const wantsAudio = options.audio !== false;
+    if (isWebCodecsAvailable(wantsAudio)) {
+        try {
+            return await saveToWebmWithWebCodecs(sprite, options);
+        } catch (err) {
+            console.warn('saveToWebm: WebCodecs path failed, falling back to MediaRecorder:', err);
+        }
+    }
+    return saveToWebmWithMediaRecorder(sprite, options);
+}
 
-    const frameCount = await sprite.prepareAnimation(animName, scale, computeBounds, flip, forcedSize);
+function isWebCodecsAvailable(includeAudio: boolean): boolean {
+    const videoOk = typeof VideoEncoder !== 'undefined'
+        && typeof VideoFrame !== 'undefined'
+        && typeof EncodedVideoChunk !== 'undefined';
+    if (!videoOk) return false;
+    if (!includeAudio) return true;
+    return typeof AudioEncoder !== 'undefined'
+        && typeof AudioData !== 'undefined'
+        && typeof OfflineAudioContext !== 'undefined';
+}
+
+/**
+ * Record a sprite animation into a WebM Blob using mediabunny + WebCodecs.
+ */
+async function saveToWebmWithWebCodecs(sprite: DofusSprite, options: SaveWebmBrowserOptions): Promise<Blob> {
+    const {animName, scale = 1, forcedSize, filename, audio = true, audioPlayer, videoBitsPerSecond, flip = false} = options;
+    const frameCount = await sprite.prepareAnimation(animName, scale, true, flip, false, forcedSize);
+    if (frameCount === 0) throw new Error(`Animation '${animName}' has no frames`);
+
+    const canvas = sprite.openGl.gl.canvas as HTMLCanvasElement;
+    const frameDurSec = 1 /  sprite.data.defaultFrameRate;
+    const totalDurSec = frameCount * frameDurSec;
+
+    const videoSource = new CanvasSource(canvas, {codec: 'vp9', bitrate: videoBitsPerSecond ?? QUALITY_HIGH});
+
+    const target = new BufferTarget();
+    const output = new Output({format: new WebMOutputFormat(), target});
+
+    output.addVideoTrack(videoSource, { frameRate:  sprite.data.defaultFrameRate });
+
+    let audioSource: AudioBufferSource | null = null;
+    let audioBuffer: AudioBuffer | null = null;
+    if (audio) {
+        const events = await sprite.currentSoundEvents();
+        if (events.length > 0) {
+            const player = audioPlayer ?? new SpriteAudioPlayer();
+            const buffers = await player.resolveBuffers(events);
+            audioBuffer = await mixSoundEventsToAudioBuffer(events, buffers, totalDurSec);
+            audioSource = new AudioBufferSource({codec: 'opus', bitrate: 128_000});
+            output.addAudioTrack(audioSource);
+        }
+    }
+
+    await output.start();
+
+    for (let i = 0; i < frameCount; i++) {
+        sprite.renderFrame(i);
+        await videoSource.add(i * frameDurSec, frameDurSec);
+    }
+    videoSource.close();
+
+    if (audioSource) {
+        await audioSource.add(audioBuffer!);
+        audioSource.close();
+    }
+
+    await output.finalize();
+
+    const bytes = new Uint8Array(target.buffer!);
+    const blob = new Blob([bytes], { type: 'video/webm' });
+
+    if (filename) downloadBlob(blob, filename);
+    return blob;
+}
+
+async function mixSoundEventsToAudioBuffer(events: SoundEvent[], buffers: ReadonlyArray<AudioBuffer | undefined>, durationSec: number): Promise<AudioBuffer> {
+    const sampleRate = 48_000;
+    const ctx = new OfflineAudioContext(2, Math.ceil(durationSec * sampleRate), sampleRate);
+    for (let i = 0; i < events.length; i++) {
+        const buf = buffers[i];
+        if (!buf) continue;
+        const src = ctx.createBufferSource();
+        src.buffer = buf;
+        src.connect(ctx.destination);
+        src.start(Math.max(0, events[i]!.startTime));
+    }
+    return ctx.startRendering();
+}
+
+/**
+ * Record a sprite animation (plus its sound events) into a WebM Blob via MediaRecorder.
+ */
+async function saveToWebmWithMediaRecorder(sprite: DofusSprite, options: SaveWebmBrowserOptions): Promise<Blob> {
+    const { animName, scale = 1, forcedSize, filename, audio = true, audioPlayer, videoBitsPerSecond, flip=false} = options;
+
+    const frameCount = await sprite.prepareAnimation(animName, scale, true, flip, false, forcedSize);
     if (frameCount === 0) throw new Error(`Animation '${animName}' has no frames`);
 
     const canvas = sprite.openGl.gl.canvas as HTMLCanvasElement;
     const captureStream = (canvas as HTMLCanvasElement & { captureStream?: (fps?: number) => MediaStream }).captureStream;
     if (typeof captureStream !== 'function') throw new Error('HTMLCanvasElement.captureStream is not available');
-    const stream = captureStream.call(canvas, sprite.data.defaultFrameRate);
+
+    const msPerFrame = 1000 / sprite.data.defaultFrameRate;
+
+    let stream = captureStream.call(canvas, 0);
+    let videoTrack = stream.getVideoTracks()[0] as CanvasCaptureMediaStreamTrack | undefined;
+    const supportsRequestFrame = !!videoTrack && typeof (videoTrack as CanvasCaptureMediaStreamTrack).requestFrame === 'function';
+    if (!supportsRequestFrame) {
+        for (const t of stream.getTracks()) t.stop();
+        stream = captureStream.call(canvas, sprite.data.defaultFrameRate);
+        videoTrack = stream.getVideoTracks()[0] as CanvasCaptureMediaStreamTrack | undefined;
+    }
 
     const events = audio ? await sprite.currentSoundEvents() : [];
     const player = events.length > 0 ? (audioPlayer ?? new SpriteAudioPlayer()) : null;
@@ -143,22 +248,28 @@ export async function saveToWebm(sprite: DofusSprite, options: SaveWebmBrowserOp
         }
     }
 
-    const msPerFrame = 1000 / sprite.data.defaultFrameRate;
-    await new Promise<void>(resolve => {
-        const startTime = performance.now();
-        let i = 0;
-        const tick = () => {
-            sprite.renderFrame(i);
-            i++;
-            if (i >= frameCount) { resolve(); return; }
-            const nextAt = startTime + i * msPerFrame;
-            const delay = Math.max(0, nextAt - performance.now());
-            setTimeout(tick, delay);
-        };
-        tick();
-    });
+    const startTime = performance.now();
+    for (let i = 0; i < frameCount; i++) {
+        const nextAt = startTime + i * msPerFrame;
+        const delay = Math.max(0, nextAt - performance.now());
+        if (delay > 0) await new Promise<void>(r => setTimeout(r, delay));
+        sprite.renderFrame(i);
+        if (supportsRequestFrame) videoTrack!.requestFrame();
+    }
 
-    await new Promise(r => setTimeout(r, Math.max(200, msPerFrame)));
+    const tailMs = Math.max(300, Math.ceil(msPerFrame * 4));
+    if (supportsRequestFrame) {
+        const tailStart = performance.now();
+        while (performance.now() - tailStart < tailMs) {
+            videoTrack!.requestFrame();
+            await new Promise<void>(r => setTimeout(r, msPerFrame));
+        }
+    } else {
+        await new Promise<void>(r => setTimeout(r, tailMs));
+    }
+
+    recorder.requestData();
+    await new Promise<void>(r => setTimeout(r, 50));
     recorder.stop();
     await stopped;
 
@@ -389,47 +500,4 @@ function buildAnmfChunk(frame: ParsedFrame, durationMs: number): Uint8Array {
     chunk[23] = 0x01; // blend = use alpha, dispose = background (clear between frames)
     chunk.set(frame.body, 24);
     return chunk;
-}
-
-function concatBytes(a: Uint8Array, b: Uint8Array): Uint8Array {
-    const out = new Uint8Array(a.length + b.length);
-    out.set(a, 0);
-    out.set(b, a.length);
-    return out;
-}
-
-function fourcc(buf: Uint8Array, offset: number): string {
-    return String.fromCharCode(buf[offset]!, buf[offset + 1]!, buf[offset + 2]!, buf[offset + 3]!);
-}
-
-function readU16LE(buf: Uint8Array, o: number): number {
-    return buf[o]! | (buf[o + 1]! << 8);
-}
-function readU24LE(buf: Uint8Array, o: number): number {
-    return buf[o]! | (buf[o + 1]! << 8) | (buf[o + 2]! << 16);
-}
-function readU32LE(buf: Uint8Array, o: number): number {
-    return (buf[o]! | (buf[o + 1]! << 8) | (buf[o + 2]! << 16) | (buf[o + 3]! * 0x1000000)) >>> 0;
-}
-
-function writeFourCC(buf: Uint8Array, o: number, s: string): void {
-    buf[o] = s.charCodeAt(0);
-    buf[o + 1] = s.charCodeAt(1);
-    buf[o + 2] = s.charCodeAt(2);
-    buf[o + 3] = s.charCodeAt(3);
-}
-function writeU16LE(buf: Uint8Array, o: number, v: number): void {
-    buf[o] = v & 0xFF;
-    buf[o + 1] = (v >>> 8) & 0xFF;
-}
-function writeU24LE(buf: Uint8Array, o: number, v: number): void {
-    buf[o] = v & 0xFF;
-    buf[o + 1] = (v >>> 8) & 0xFF;
-    buf[o + 2] = (v >>> 16) & 0xFF;
-}
-function writeU32LE(buf: Uint8Array, o: number, v: number): void {
-    buf[o] = v & 0xFF;
-    buf[o + 1] = (v >>> 8) & 0xFF;
-    buf[o + 2] = (v >>> 16) & 0xFF;
-    buf[o + 3] = (v >>> 24) & 0xFF;
 }

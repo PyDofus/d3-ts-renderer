@@ -14,12 +14,10 @@ varying vec4 process_multiplicative_color;
 
 uniform vec4 multiplicative_color;
 uniform mat3 transfo;
-uniform vec2 offset;
-uniform vec2 size_factor;
 uniform vec3 custom_color[16];
 
 void main() {
-    vec2 scale_pos = size_factor * ((transfo * vec3(in_pos.xy, 1.0)).xy - offset) - 1.0;
+    vec2 scale_pos = (transfo * vec3(in_pos.xy, 1.0)).xy;
     gl_Position = vec4(scale_pos, 0.0, 1.0);
     uv = in_uv;
     int idx = int(in_pos.z + 0.5);
@@ -86,11 +84,10 @@ attribute vec2 in_uv;
 varying vec2 uv;
 
 uniform mat3 transfo_m;
-uniform vec2 offset_m;
-uniform vec2 size_factor_m;
+
 
 void main() {
-  vec2 scale_pos = size_factor_m * ((transfo_m * vec3(in_pos.xy, 1.0)).xy - offset_m) - 1.0;
+  vec2 scale_pos = (transfo_m * vec3(in_pos.xy, 1.0)).xy;
   gl_Position = vec4(scale_pos, 0.0, 1.0);
   uv = in_uv;
 }

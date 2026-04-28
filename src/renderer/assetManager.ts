@@ -161,12 +161,8 @@ export abstract class AssetManager {
     }
 
     private _getCarriedSubEntityNode(index: string): NodeElementSprite | null {
-        const parts = index.split('_');
-        const category = parseInt(parts[1]!);
-        const subEntityIndex = parts.length > 2 ? parseInt(parts[2]!) : 0;
-        const subLook = this.look.subEntities.get(category)?.get(subEntityIndex);
-        if (!subLook) return null;
-        const sprite = this.getSubEntity(subLook, index);
+        const sprite = this.getSubEntity(index);
+        if (!sprite) return null;
         return {sprite, name: index, transformation: null};
     }
 
@@ -209,7 +205,7 @@ export abstract class AssetManager {
     }
 
     private _iterEntry(assetPart: SkinAssetPart): NodeElementGroup[] {
-        const elements = this._walk(assetPart, null, false, 'symbolId');
+        const elements = this._walk(assetPart, null, false);
         // Group NodeElementSprite and NodeElementData by mask (like Python groupby)
         // This avoids repeated mask checks and stencil update in _renderNode.
         // Not sure if this is idiomatic in TypeScript.
@@ -225,12 +221,7 @@ export abstract class AssetManager {
         return groups;
     }
 
-    private _walk(
-        part: SkinAssetPart,
-        transformation: Mat3 | null,
-        assetEqualityCheck: boolean = true,
-        key: 'entries' | 'symbolId' = 'entries',
-    ): Array<NodeElementData | NodeElementSprite> {
+    private _walk(part: SkinAssetPart, transformation: Mat3 | null, assetEqualityCheck: boolean = true): Array<NodeElementData | NodeElementSprite> {
         const result: Array<NodeElementData | NodeElementSprite> = [];
         let index = 0;
         let drawIndex = 0;
@@ -238,7 +229,7 @@ export abstract class AssetManager {
         while (index < part.entry.length) {
             const entry = part.entry[index]!;
 
-            if (entry[key] === -1) {
+            if (entry.entries === -1) {
                 const vertex = part.skinChunks[drawIndex];
                 if (vertex !== undefined) {
                     result.push({transformation: transformation ?? mat3Identity(), vertexes: vertex});
@@ -283,7 +274,7 @@ export abstract class AssetManager {
         return result;
     }
 
-    abstract getSubEntity(_subLook: Look, _index: string): DofusSprite;
+    abstract getSubEntity(_index: string): DofusSprite|undefined;
 
     async changeBone(boneName: string): Promise<void> {
         await this._getBone(boneName);

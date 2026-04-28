@@ -2,7 +2,7 @@ import {MaskFlags} from '../readers/renderState';
 import type {RendererContext} from './rendererContext';
 import type {BufferElement} from './buffer';
 import type {NodeElementData} from './nodeStructure';
-import type {Mat3} from '../math';
+import {type Mat3, mat3Mul} from '../math';
 
 export class MaskRenderer {
     private readonly _ctx: RendererContext;
@@ -16,11 +16,12 @@ export class MaskRenderer {
         this.count = 0;
     }
 
-    renderElement(bufferElement: BufferElement): void {
+    renderElement(bufferElement: BufferElement, parentTransform: Mat3 | null = null): void {
         this._setup(bufferElement.context.maskFlags);
         for (let i = 0; i < bufferElement.nodeElement.length; i++) {
             const elem = bufferElement.nodeElement[i]!;
-            const transfo = bufferElement.transforms[i]!;
+            const local = bufferElement.transforms[i]!;
+            const transfo = parentTransform === null ? local : mat3Mul(parentTransform, local);
             this._ctx.setMaskTransfo(transfo, elem.vertexes.textureId);
             elem.vertexes.render(this._ctx, this._ctx.maskProgram);
         }

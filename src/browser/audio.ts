@@ -1,6 +1,6 @@
-import type { SoundEvent } from '../data/audio';
-import { getLoader } from '../data/loader';
-import type { DofusSprite } from '../renderer/dofusSprite';
+import type {SoundEvent} from '../data/audio';
+import {getLoader} from '../data/loader';
+import type {DofusSprite} from '../renderer/dofusSprite';
 
 /**
  * Schedule sprite sound events through Web Audio.
@@ -21,7 +21,7 @@ export class SpriteAudioPlayer {
     }
 
     stop(): void {
-        for (const src of this._sources) try { src.stop(); } catch {}
+        for (const src of this._sources) try {src.stop();} catch {}
         this._sources = [];
     }
 
@@ -44,14 +44,7 @@ export class SpriteAudioPlayer {
 
     /** Decode (or reuse cached) AudioBuffers for the given events. */
     async resolveBuffers(events: ReadonlyArray<SoundEvent>): Promise<(AudioBuffer | undefined)[]> {
-        return Promise.all(events.map(e => this._loadBuffer(e.soundPath).catch(() => undefined)));
-    }
-
-    async replay(): Promise<void> {
-        if (this._lastEvents.length === 0) return;
-        this.stop();
-        if (this._ctx.state === 'suspended') await this._ctx.resume();
-        this._schedule(this._lastEvents, this._lastBuffers);
+        return Promise.all(events.map(e => this._loadBuffer(e).catch(() => undefined)));
     }
 
     private _schedule(events: SoundEvent[], buffers: ReadonlyArray<AudioBuffer | undefined>): void {
@@ -59,19 +52,42 @@ export class SpriteAudioPlayer {
         for (let i = 0; i < events.length; i++) {
             const buf = buffers[i];
             if (!buf) continue;
-            const src = this._ctx.createBufferSource();
-            src.buffer = buf;
-            src.connect(this._ctx.destination);
-            src.start(startAt + Math.max(0, events[i]!.startTime));
-            this._sources.push(src);
+            this._pushBuffer(buf, startAt, events[i]!);
         }
     }
 
-    private async _loadBuffer(soundPath: string): Promise<AudioBuffer> {
-        let pending = this._cache.get(soundPath);
+    private _pushBuffer(buffer:AudioBuffer, currentTime: number, event: SoundEvent) {
+        const src = this._ctx.createBufferSource();
+        src.buffer = buffer;
+        src.connect(this._ctx.destination);
+        src.start(currentTime + Math.max(0, event.startTime));
+        this._sources.push(src);
+    }
+
+
+    async replayOnLoop(frameIndex: number): Promise<void> {
+        if (this._lastEvents.length === 0 || frameIndex === 0) return;
+
+        const toPlay: { event: SoundEvent; buffer: AudioBuffer }[] = [];
+        for (let i = 0; i < this._lastEvents.length; i++) {
+            const event = this._lastEvents[i]!;
+            const buffer = this._lastBuffers[i];
+            if (!buffer) continue;
+            if (frameIndex % event.frameCount !== 0) continue;
+            toPlay.push({event, buffer});
+        }
+        if (toPlay.length === 0) return;
+        if (this._ctx.state === 'suspended') await this._ctx.resume();
+
+        const startAt = this._ctx.currentTime;
+        for (const {buffer, event} of toPlay) this._pushBuffer(buffer, startAt, event)
+    }
+
+    private async _loadBuffer(event: SoundEvent): Promise<AudioBuffer> {
+        let pending = this._cache.get(event.soundPath);
         if (!pending) {
-            pending = (async () => this._ctx.decodeAudioData(await getLoader().audioBytes(soundPath)))();
-            this._cache.set(soundPath, pending);
+            pending = (async () => this._ctx.decodeAudioData(await getLoader().audioBytes(event)))();
+            this._cache.set(event.soundPath, pending);
         }
         return pending;
     }

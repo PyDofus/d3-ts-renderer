@@ -3,10 +3,10 @@ import type {Look} from '../look/look';
 import {type Directions, flipAnimNameString} from '../data/directions';
 import {getAnimName, getRelatedChildAnim} from '../data/animation';
 import type {AnimationInstance} from '../readers/animationInstance';
-import {type Mat3, mat3Identity, mat3Scale} from '../math';
+import {type Bounds2D, type Mat3, mat3Identity, mat3Scale} from '../math';
 import {RenderState} from '../readers/renderState';
 import {AssetManager} from './assetManager';
-import {Buffer, type BufferFrames} from './buffer';
+import {Buffer, type BufferFrames, computeBufferLocalBounds} from './buffer';
 import {FrameRenderer} from './frameRenderer';
 import {RendererContext} from './rendererContext';
 import {getAudioManager, type SoundEvent} from '../data/audio';
@@ -24,6 +24,11 @@ export class DofusSprite extends AssetManager {
     private _subEntitySprites = new Map<string, DofusSprite>();
     private _animInstances = new Map<string, AnimationInstance>();
     private _animationBuffer = new Map<string, BufferFrames>();
+    private _animationBounds = new Map<string, Bounds2D>();
+
+    // store sub animation name to avoid re resolved them
+    // (after first prepareAnimation call, currentRendering is set only for main sprite not sub)
+    private _subSpriteRenderingName = new Map<string, Map<string, string>>();
 
     private constructor(
         look: Look,
@@ -101,16 +106,19 @@ export class DofusSprite extends AssetManager {
         await this._buildAnimInstance(animName);
 
         const childLoadTasks: Promise<void>[] = [];
-        for (const [, subSprite] of this._subEntitySprites) {
-            const [childAnim] = getRelatedChildAnim([...subSprite.animations.keys()], animName);
-            if (childAnim && !subSprite._animInstances.has(childAnim)) {
-                childLoadTasks.push(subSprite.buildBuffer(childAnim).then(() => undefined));
+        for (const [key, subSprite] of this._subEntitySprites) {
+            const [childAnim, flip] = getRelatedChildAnim([...subSprite.animations.keys()], animName);
+            if (childAnim) {
+                this._applySubAnim(subSprite, key, flip, childAnim)
+                if (!subSprite._animInstances.has(childAnim))
+                    childLoadTasks.push(subSprite.buildBuffer(childAnim).then(() => undefined));
             }
         }
         await Promise.all(childLoadTasks);
 
         const frames = this._buildBufferSync(animName);
         this._animationBuffer.set(animName, frames);
+        this._animationBounds.set(animName, computeBufferLocalBounds(frames));
         return frames;
     }
 
@@ -128,8 +136,6 @@ export class DofusSprite extends AssetManager {
         const animMeta = this._animInstances.get(animName);
         if (!animMeta) throw new Error(`Animation instance '${animName}' not loaded`);
 
-        this.currentRendering = animName;
-        this.resetSubSpriteCurrentRendering()
         const scaleMatrix: Mat3 = mat3Scale(this.look.size);
         const framesBuffer: BufferFrames = [];
 
@@ -161,30 +167,49 @@ export class DofusSprite extends AssetManager {
         return frames;
     }
 
-    setupSubAnim(sprite: DofusSprite): void {
+    getLocalBounds(animName: string): Bounds2D {
+        const bounds = this._animationBounds.get(animName);
+        if (!bounds) throw new Error(`Bounds for '${animName}' not ready. Call buildBuffer first.`);
+        return bounds;
+    }
+
+    setupSubAnim(sprite: DofusSprite, key:string): void {
         if (this.currentRendering !== null) {
             const [name, flip] = getRelatedChildAnim([...sprite.animations.keys()], this.currentRendering);
-            sprite.currentRendering = name ?? null;
-            sprite.flip = flip;
+            if (!name) return
+            this._applySubAnim(sprite, key, flip, name)
         }
+    }
+
+    private _applySubAnim(sprite: DofusSprite, key: string, flip: boolean, name: string) {
+        let innerMap = this._subSpriteRenderingName.get(this.currentRendering!);
+        if (!innerMap) {
+            innerMap = new Map<string, string>();
+            this._subSpriteRenderingName.set(this.currentRendering!, innerMap);
+        }
+        innerMap.set(key, name);
+
+        sprite.currentRendering = name;
+        sprite.flip = flip && !this.flip;
     }
 
     // ── Rendering ─────────────────────────────────────────────────────────────────
 
     /** Prepare canvas size and pre-build buffers for an animation. */
-    async prepareAnimation(animName: string, scale: number, computeBounds = false, flip = false, forcedSize?: number): Promise<number> {
+    async prepareAnimation(animName: string, scale: number, computeBounds:boolean = false, flipX: boolean = false, flipY: boolean=false, forcedSize?: number): Promise<number> {
         if (!this.animations.has(animName)) {
             const flipped = flipAnimNameString(animName)
             if (!this.animations.has(flipped))
                 throw new Error(`Animation '${animName}' not found`);
-            flip = true;
+            flipX = true;
             animName = flipped;
         }
 
-        const buffers = await this.buildBuffer(animName);
+        this.flip = flipX;
         this.currentRendering = animName;
+        const buffers = await this.buildBuffer(animName);
         const anim = this.animations.get(animName)!;
-        this.renderer.setRenderSize(scale, anim.bounds, buffers, computeBounds, forcedSize, flip);
+        this.renderer.setRenderSize(scale, anim.bounds, this.getLocalBounds(animName), computeBounds, forcedSize, flipX, flipY);
         return buffers.length
     }
 
@@ -209,7 +234,7 @@ export class DofusSprite extends AssetManager {
         buffer.appendNode(processedPart, 1, state, mat3Identity(), this.look.flatColorArray);
 
         const frames: BufferFrames = [buffer];
-        this.renderer.setRenderSize(scale, null, frames, true);
+        this.renderer.setRenderSize(scale, null, computeBufferLocalBounds(frames), true);
         this.renderer.renderFrame(frames, 0);
     }
 
@@ -217,7 +242,7 @@ export class DofusSprite extends AssetManager {
     renderFrame(frameIndex: number): void {
         if (!this.currentRendering) throw new Error('Call prepareAnimation first.');
         const frames = this.buffer(this.currentRendering);
-        this.renderer.renderFrame(frames, frameIndex % frames.length);
+        this.renderer.renderFrame(frames, frameIndex);
     }
 
     getFrameCount(animName: string): number {
@@ -226,13 +251,6 @@ export class DofusSprite extends AssetManager {
 
     getAnimName(direction: Directions, name?: string): [string, boolean] {
         return getAnimName([...this.animations.keys()], direction, this.look.bone, name);
-    }
-
-    resetSubSpriteCurrentRendering(): void {
-        for (const sprite of this._subEntitySprites.values()) {
-            sprite.currentRendering = null;
-            sprite.resetSubSpriteCurrentRendering();
-        }
     }
 
     async getMaxFrame(animName: string): Promise<number> {
@@ -247,35 +265,45 @@ export class DofusSprite extends AssetManager {
         return Math.max(0, ...counts);
     }
 
-    override getSubEntity(subLook: Look, index: string): DofusSprite {
-        const existing = this._subEntitySprites.get(index);
-        if (existing) return existing;
-        throw new Error(`Sub-entity '${index}' not pre-loaded. This is a bug.`);
+    override getSubEntity(index: string): DofusSprite|undefined {
+        return this._subEntitySprites.get(index);
     }
 
     // ── Audio ─────────────────────────────────────────────────────────────────────
 
     /** Sound-bank key for the current animation (strip trailing direction index). */
-    currentAnimSoundName(): string | null {
-        if (this.currentRendering === null) return null;
-        const idx = this.currentRendering.lastIndexOf('_');
-        const baseAnim = idx === -1 ? this.currentRendering : this.currentRendering.slice(0, idx);
+    AnimSoundName(animName:string): string {
+        const idx = animName.lastIndexOf('_');
+        const baseAnim = idx === -1 ? animName : animName.slice(0, idx);
         return this.look.bone === 1 ? `${this.data.m_Name}/${baseAnim}` : baseAnim;
     }
 
-    /** All [soundName, boneId] pairs for the current anim and sub-entities. */
-    currentSoundData(): Array<[string, number]> {
-        const soundKeys: Array<[string, number]> = [];
-        const name = this.currentAnimSoundName();
-        if (name) soundKeys.push([name, this.look.bone]);
-        for (const sub of this._subEntitySprites.values()) {
-            const subName = sub.currentAnimSoundName();
-            if (subName) soundKeys.push([subName, sub.look.bone]);
+    /** All [soundName, boneId, sourceFrameCount] tuples for the current anim and sub-entities. */
+    currentSoundData(): Array<[string, number, number]> {
+        const soundKeys: Array<[string, number, number]> = [];
+
+        const anim = this.currentRendering;
+        if (!anim) return soundKeys;
+
+        const instance = this._animInstances.get(anim);
+        if (!instance) return soundKeys;
+
+        const nbFrame = instance.frameCount;
+        const name = this.AnimSoundName(anim);
+        soundKeys.push([name, this.look.bone, nbFrame]);
+
+        const subentity = this._subSpriteRenderingName.get(anim);
+        if (!subentity) return soundKeys;
+        for (const [index, animName] of subentity) {
+            const subSprite = this._subEntitySprites.get(index);
+            if (!subSprite) continue;
+            subSprite.currentRendering = animName
+            soundKeys.push(...subSprite.currentSoundData());
         }
         return soundKeys;
     }
 
-    /** Resolve the current animation's sound events (path and start time in seconds). */
+    /** Resolve the current animation's sound events. */
     async currentSoundEvents(): Promise<SoundEvent[]> {
         const keys = this.currentSoundData();
         if (keys.length === 0) return [];

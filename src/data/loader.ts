@@ -9,6 +9,7 @@ import type {
     SkinSlotRuleData, SoundBoneData,
     TextureSource
 } from './types';
+import type {SoundEvent} from "./audio";
 
 export type ImageDecoder = (bytes: Uint8Array, path: string) => Promise<TextureSource>;
 
@@ -36,7 +37,9 @@ const enum BundleFile {
     SkinSlot = "skinslotsrulesdataroot",
     Body = "bodiesdataroot",
     SoundBone = "soundbonesdataroot",
-    audioLib = "Assets/Configuration/Audio/AudioManagerLibrary.asset"
+    audioLib = "Assets/Configuration/Audio/AudioManagerLibrary.asset",
+    processedAudioLib = "audio_manager.json",
+    changeTable = "Content/Characters/table.json"
 }
 
 export interface DataConfig {
@@ -113,17 +116,38 @@ export abstract class DataLoader {
         return this.json(`${StreamingAssets.aa}/${BundleFile.audioLib}`)
     }
 
-    async fmodEvent(eventPath:string): Promise<FmodEvent> {
+    async loadProcessedAudioLib(): Promise<Record<string, [string, number]>> {
+        return this.json(`${StreamingAssets.Audio}/${BundleFile.processedAudioLib}`)
+    }
+
+    async fmodEvent(eventPath: string, _: number): Promise<FmodEvent>  {
         return this.json(`${StreamingAssets.Audio}/${eventPath}/info.json`)
     }
 
-    async audioBytes(soundPath: string): Promise<ArrayBuffer> {
-        return this.binary(`${StreamingAssets.Audio}/${soundPath}`);
+    async audioBytes(event: SoundEvent): Promise<ArrayBuffer> {
+        return this.binary(`${StreamingAssets.Audio}/${event.soundPath}`);
     }
-
 }
 
 class UrlLoader extends DataLoader {
+    private cacheTable: Record<"Bones"|"Skins", Map<string, number>>;
+    constructor(basePath: string, decodeImage?: ImageDecoder) {
+        super(basePath, decodeImage);
+        this.cacheTable = {Bones: new Map(), Skins: new Map()};
+        if (typeof window !== "undefined") void this.setCache();
+
+    }
+
+    private async setCache():Promise<void> {
+        try {
+            const data = await this.json<Record<any, any>>(BundleFile.changeTable);
+            this.cacheTable = {
+                Bones: new Map(Object.entries(data?.Bones ?? {})),
+                Skins: new Map(Object.entries(data?.Skins ?? {})),
+            };
+        } catch (e) {}
+    }
+
     private async fetchRes(path: string): Promise<Response> {
         const res = await fetch(this._base + path);
         if (!res.ok) throw new Error(`HTTP ${res.status} fetching ${path}`);
@@ -148,6 +172,39 @@ class UrlLoader extends DataLoader {
         const blob = await res.blob();
         return createImageBitmap(blob);
     }
+
+    async fmodEvent(eventPath: string, timestamp: number): Promise<FmodEvent>  {
+        return this.json(`${StreamingAssets.Audio}/${eventPath}/info.json?t=${timestamp}`)
+    }
+
+    async audioBytes(event: SoundEvent): Promise<ArrayBuffer> {
+        return this.binary(`${StreamingAssets.Audio}/${event.soundPath}?t=${event.timestamp}`);
+    }
+
+    protected async loadSkinWithCache(path: string, timestamp:number): Promise<SkinBundle> {
+        const skin = await this.json<SkinAsset>(`${path}/skin.json?t=${timestamp}`);
+        const textures = await Promise.all(skin.textures.map(t => this.image(`${path}/${t.m_PathID}.png?t=${timestamp}`)));
+        return {skin, images: textures};
+    }
+
+    async loadAnimationData(boneName: string, animName: string, isMapAnimation?: boolean): Promise<ArrayBuffer> {
+        const timestamp = this.cacheTable.Bones.get(boneName) ?? 0
+        return this.binary(`${isMapAnimation? StreamingAssets.Animations: StreamingAssets.Bones}/${boneName}/${animName}.dat?t=${timestamp}`);
+    }
+
+    async loadSkin(skinId: number): Promise<SkinBundle> {
+        const timestamp = this.cacheTable.Skins.get(String(skinId)) ?? 0
+        return this.loadSkinWithCache(`${StreamingAssets.Skins}/${skinId}`, timestamp);
+    }
+
+    async loadBone(boneName: string, isMapAnimation?: boolean): Promise<BoneBundle> {
+        const timestamp = this.cacheTable.Bones.get(boneName) ?? 0
+        const folder = `${isMapAnimation? StreamingAssets.Animations: StreamingAssets.Bones}/${boneName}`
+        const skin = await this.loadSkinWithCache(folder, timestamp);
+        const bone = await this.json<AnimatedObjectDefinition>(`${folder}/bone.json?t=${timestamp}`);
+        return {bone, skin};
+    }
+
 }
 
 class FsLoader extends DataLoader {

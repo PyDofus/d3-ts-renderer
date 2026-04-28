@@ -1,5 +1,5 @@
 import {BlendMode} from '../readers/renderState';
-import {type Mat3} from '../math';
+import {type Mat3, mat3Identity, mat3MulInto} from '../math';
 import type {TextureSource} from '../data/types';
 import {MASK_FRAG, MASK_VERT, RENDER_FRAG, RENDER_VERT} from './shaders';
 
@@ -28,8 +28,6 @@ abstract class GLBackend {
     abstract readonly supportsU32Indices: boolean;
     abstract readonly indexType: number;
     abstract readonly blendModes: Readonly<Record<number, BlendParams>>;
-    /** WebGL1 forbids uniformMatrix*fv(transpose=true); WebGL2 allows it. */
-    abstract readonly supportsMatTranspose: boolean;
 
     abstract createVAO(): VAO | null;
     abstract bindVAO(v: VAO | null): void;
@@ -67,7 +65,6 @@ class WebGL2Backend extends GLBackend {
     readonly gl: WebGL2RenderingContext;
     readonly hasVAO = true;
     readonly supportsU32Indices = true;
-    readonly supportsMatTranspose = true;
     readonly indexType: number;
     readonly blendModes: Readonly<Record<number, BlendParams>>;
 
@@ -91,7 +88,6 @@ class WebGL1Backend extends GLBackend {
     readonly gl: WebGLRenderingContext;
     readonly hasVAO: boolean;
     readonly supportsU32Indices: boolean;
-    readonly supportsMatTranspose = false;
     readonly indexType: number;
     readonly blendModes: Readonly<Record<number, BlendParams>>;
     private readonly _vaoExt: OES_vertex_array_object | null;
@@ -129,9 +125,6 @@ export class RendererContext {
     readonly program: WebGLProgram;
     readonly maskProgram: WebGLProgram;
 
-    size: [number, number] = [1, 1];
-    offset: [number, number] = [0, 0];
-
     private _textures: WebGLTexture[] = [];
     private _uniformCache = new Map<WebGLProgram, Map<string, WebGLUniformLocation>>();
     private _currentProgram: WebGLProgram | null = null;
@@ -144,10 +137,13 @@ export class RendererContext {
     private _ibo: WebGLBuffer | null = null;
     private _buffersReady = false;
 
+    private readonly _projection: Mat3 = mat3Identity();
+    private readonly _projTransfo: Mat3 = mat3Identity();
+
     private readonly _backend: GLBackend;
 
     constructor(canvas: HTMLCanvasElement) {
-        const opts: WebGLContextAttributes = {stencil: true, alpha: true, premultipliedAlpha: false};
+        const opts: WebGLContextAttributes = {stencil: true, alpha: true, premultipliedAlpha: false, depth:false};
 
         const gl2 = canvas.getContext('webgl2', opts);
         if (gl2) {
@@ -244,27 +240,20 @@ export class RendererContext {
 
     // ── bounds / size ─────────────────────────────────────────────────────────────
 
-    setBound(width: number, height: number, offsetX: number, offsetY: number, scale: number, flip = false): void {
+    setBound(width: number, height: number, offsetX: number, offsetY: number, scale: number, flipX: boolean = false, flipY: boolean= false): void {
         const gl = this.gl;
         const w = Math.ceil(width * scale);
         const h = Math.ceil(height * scale);
-        this.size = [w, h];
-        this.offset = [(flip ? width - offsetX: offsetX) * scale, offsetY * scale];
-
         gl.canvas.width = w;
         gl.canvas.height = h;
         gl.viewport(0, 0, w, h);
 
-        const sfx = flip ? -2 / width : 2 / width;
-        const sfy =2 / height;
-        const ox = flip ? offsetX + width : offsetX;
-
-        this.useProgram(this.program);
-        this._setUniform2f('size_factor', sfx, sfy);
-        this._setUniform2f('offset', ox, offsetY);
-        this.useProgram(this.maskProgram);
-        this._setUniformForProgram(this.maskProgram, 'size_factor_m', loc => gl.uniform2f(loc, sfx, sfy));
-        this._setUniformForProgram(this.maskProgram, 'offset_m', loc => gl.uniform2f(loc, ox, offsetY));
+        const sfx = flipX ? -2 / width : 2 / width;
+        const sfy = flipY ? -2 / height : 2 / height;
+        const p = this._projection;
+        p[0] = sfx; p[1] = 0;   p[2] = 0;
+        p[3] = 0;   p[4] = sfy; p[5] = 0;
+        p[6] = -(flipX? offsetX+ width: offsetX) * sfx - 1; p[7] = -(flipY? offsetY+ height: offsetY) * sfy - 1; p[8] = 1;
     }
 
     // ── per-draw uniforms ─────────────────────────────────────────────────────────
@@ -287,28 +276,16 @@ export class RendererContext {
     setRenderUniformsPerVertex(texture: number, transfo: Mat3): void {
         this.useProgram(this.program);
         this._setUniform1i('Texture', texture);
-        this._uploadMat3(this._uniform('transfo'), transfo);
+        mat3MulInto(this._projTransfo, this._projection, transfo);
+        this.gl.uniformMatrix3fv(this._uniform('transfo'), false, this._projTransfo);
     }
 
     setMaskTransfo(transfo: Mat3, texture: number): void {
         const gl = this.gl;
         this.useProgram(this.maskProgram);
-        this._uploadMat3(this._uniformForProgram(this.maskProgram, 'transfo_m'), transfo);
+        mat3MulInto(this._projTransfo, this._projection, transfo);
+        this.gl.uniformMatrix3fv(this._uniformForProgram(this.maskProgram, 'transfo_m'), false, this._projTransfo);
         gl.uniform1i(this._uniformForProgram(this.maskProgram, 'Texture_m'), texture);
-    }
-
-    // WebGL2 accepts transpose=true; WebGL1 forbids it.
-    // todo check possibility to build dirrectly transposed matrix or change operation to avodi transpose
-    private _matScratch = new Float32Array(9);
-    private _uploadMat3(loc: WebGLUniformLocation, m: Mat3): void {
-        if (this._backend.supportsMatTranspose) this.gl.uniformMatrix3fv(loc, true, m);
-        else {
-            const s = this._matScratch;
-            s[0] = m[0]!; s[1] = m[3]!; s[2] = m[6]!;
-            s[3] = m[1]!; s[4] = m[4]!; s[5] = m[7]!;
-            s[6] = m[2]!; s[7] = m[5]!; s[8] = m[8]!;
-            this.gl.uniformMatrix3fv(loc, false, s);
-        }
     }
 
     // ── draw call helpers ─────────────────────────────────────────────────────────

@@ -1,7 +1,7 @@
 import { configure, Look, DofusSprite, type DataConfig } from '../src';
 import { decodeImage, createCanvas, saveToPng} from '../src/headless/export';
 
-const config: DataConfig = {strategy: 'url', basePath: 'https://static.souff.fr/', decodeImage}
+const config: DataConfig = {strategy: 'url', basePath: 'https://cdn.example.com/assets/', decodeImage}
 // or
 // const config: DataConfig = {strategy: 'fs', basePath: 'AssetPath', decodeImage}
 

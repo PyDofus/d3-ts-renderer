@@ -136,14 +136,26 @@ comment above each string tells the IDE which injection to apply.
 ## Roadmap
 
 Not yet implemented:
+- optim DofusSprite create: check _getBone, _getSkinDict times and texture check perf with webm or other formats
+- rewrite this readme when pydofus3 readme is done
 
-- **sub sprite** rework how sub sprite animation are handled to avoid return to frame 0 when the main animation is finished
-- **sub sprite** sound/animation mismatch after looping
+Not prioritized:
 - **Flash filters** — parsed from data but not applied at render time
 - **Partial-data API** — fetch individual body / skinslot entries instead of
   the full metadata JSON
 - **snap shader**
-- ?? texture: check perf with webm or other formats + check png without fpng
-- ?? flip directly in shader (same as orientation flip) when export to avoid flip in ffmpeg 
+- **webm export** - saveToWebmWithMediaRecorder add [fix webm duration](https://github.com/yusitnikov/fix-webm-duration) or something similar to debug webm missing duration + seek.
+  (saveToWebmWithMediaRecorder is only use when webcodec isn't supported)
 
-Items marked with “??” are experimental ideas. I’m not sure yet whether they will improve performance.
+
+## thanks
+...
+
+## Data extraction
+...
+
+## project using the lib
+...
+
+## license / usage
+...

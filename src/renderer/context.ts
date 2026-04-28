@@ -16,6 +16,7 @@ export function renderContextFromState(
     state: RenderState,
     scaleMatrix: Mat3,
     customColor: Float32Array,
+    mask:number
 ): RenderContext {
     return {
         multiplicativeColor: state.multiplicativeColor,
@@ -23,12 +24,8 @@ export function renderContextFromState(
         tranfoMatrix: mat3Mul(scaleMatrix, state.tranfoMatrix),
         blendMode: state.blendMode,
         alpha: state.alpha,
-        maskFlags: state.maskFlags,
+        maskFlags: mask !==0 ? mask : state.maskFlags,
         customColor,
         colorMatrix: state.colorMatrix,
     };
-}
-
-export function renderContextWithMatrix(ctx: RenderContext, tranfoMatrix: Mat3): RenderContext {
-    return {...ctx, tranfoMatrix};
 }

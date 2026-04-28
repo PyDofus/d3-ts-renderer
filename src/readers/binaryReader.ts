@@ -95,3 +95,51 @@ export class BinaryReader {
         return [this.i8/127, this.i8/127, this.i8/127, this.i8/127];
     }
 }
+
+export function fourcc(buf: Uint8Array, offset: number): string {
+    return String.fromCharCode(buf[offset]!, buf[offset + 1]!, buf[offset + 2]!, buf[offset + 3]!);
+}
+
+export function readU16LE(buf: Uint8Array, o: number): number {
+    return buf[o]! | (buf[o + 1]! << 8);
+}
+
+export function readU24LE(buf: Uint8Array, o: number): number {
+    return buf[o]! | (buf[o + 1]! << 8) | (buf[o + 2]! << 16);
+}
+
+export function readU32LE(buf: Uint8Array, o: number): number {
+    return (buf[o]! | (buf[o + 1]! << 8) | (buf[o + 2]! << 16) | (buf[o + 3]! * 0x1000000)) >>> 0;
+}
+
+export function writeFourCC(buf: Uint8Array, o: number, s: string): void {
+    buf[o] = s.charCodeAt(0);
+    buf[o + 1] = s.charCodeAt(1);
+    buf[o + 2] = s.charCodeAt(2);
+    buf[o + 3] = s.charCodeAt(3);
+}
+
+export function writeU16LE(buf: Uint8Array, o: number, v: number): void {
+    buf[o] = v & 0xFF;
+    buf[o + 1] = (v >>> 8) & 0xFF;
+}
+
+export function writeU24LE(buf: Uint8Array, o: number, v: number): void {
+    buf[o] = v & 0xFF;
+    buf[o + 1] = (v >>> 8) & 0xFF;
+    buf[o + 2] = (v >>> 16) & 0xFF;
+}
+
+export function writeU32LE(buf: Uint8Array, o: number, v: number): void {
+    buf[o] = v & 0xFF;
+    buf[o + 1] = (v >>> 8) & 0xFF;
+    buf[o + 2] = (v >>> 16) & 0xFF;
+    buf[o + 3] = (v >>> 24) & 0xFF;
+}
+
+export function concatBytes(a: Uint8Array, b: Uint8Array): Uint8Array {
+    const out = new Uint8Array(a.length + b.length);
+    out.set(a, 0);
+    out.set(b, a.length);
+    return out;
+}

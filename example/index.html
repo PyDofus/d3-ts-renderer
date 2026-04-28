@@ -53,7 +53,7 @@
   </label>
 
   <label>Scale
-    <input id="scale" type="number" value="2" min="0.1" max="10" step="0.1" style="width:80px" />
+    <input id="scale" type="number" value="4" min="1" max="10" step="1" style="width:80px" />
   </label>
 
   <label>Audio <input id="audioToggle" type="checkbox" checked/></label>
@@ -66,7 +66,7 @@
       <select id="anim" style="width:340px"></select>
     </label>
     <br/>
-    <button id="renderBtn">Render</button>
+    <button id="startBtn">Render</button>
     <button id="stopBtn" style="display:none">Stop</button>
     <button id="pngBtn">Save PNG</button>
     <button id="webpBtn">Save WebP</button>
@@ -86,7 +86,7 @@
     });
 
     const loadBtn   = document.getElementById('loadBtn');
-    const renderBtn = document.getElementById('renderBtn');
+    const startBn = document.getElementById('startBtn');
     const stopBtn   = document.getElementById('stopBtn');
     const pngBtn    = document.getElementById('pngBtn');
     const webpBtn   = document.getElementById('webpBtn');
@@ -122,10 +122,12 @@
       boneNameEl.value = boneNamePresetsEl.value;
     });
 
+    animSel.addEventListener('change', async () => render())
+
     function stopPlayback() {
       playback.stop();
       stopBtn.style.display = 'none';
-      renderBtn.style.display = '';
+      startBn.style.display = '';
     }
 
     stopBtn.addEventListener('click', stopPlayback);
@@ -148,12 +150,14 @@
         loadedSprite = await DofusSprite.create(look, canvas, { boneName, isMapAnimation });
 
         const animNames = [...loadedSprite.animations.keys()];
+        animNames.sort((a,b) => a.localeCompare(b))
         animSel.innerHTML = animNames.map(n => `<option value="${n}">${n}</option>`).join('');
 
         animWrap.style.display = '';
-        renderBtn.style.display = '';
+        startBn.style.display = '';
         stopBtn.style.display = 'none';
         infoEl.textContent = `Loaded — ${animNames.length} animation(s) available`;
+        await render()
       } catch (err) {
         showError(err);
         infoEl.textContent = '';
@@ -200,14 +204,16 @@
       }
     });
 
-    renderBtn.addEventListener('click', async () => {
+    startBn.addEventListener('click', async () => render());
+
+    async function render() {
       if (!loadedSprite) return;
       errorEl.textContent = '';
       try {
         const animName = animSel.value;
         infoEl.textContent = `Preparing animation '${animName}'…`;
 
-        renderBtn.style.display = 'none';
+        startBn.style.display = 'none';
         stopBtn.style.display = '';
 
         const frameCount = await playback.play(loadedSprite, animName, {scale: getScale(), audio: audioToggleEl.checked, onFrame: i => { currentFrame = i; }});
@@ -215,10 +221,11 @@
       } catch (err) {
         showError(err);
         infoEl.textContent = '';
-        renderBtn.style.display = '';
+        startBn.style.display = '';
         stopBtn.style.display = 'none';
       }
-    });
+    }
+
   </script>
 </body>
 </html>

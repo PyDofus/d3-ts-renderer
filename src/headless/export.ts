@@ -46,7 +46,7 @@ export async function saveToPng(canvas: HTMLCanvasElement, path: string): Promis
     const height = gl.drawingBufferHeight;
     const pixels = Buffer.alloc(width * height * 4);
     gl.readPixels(0, 0, width, height, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
-    await sharp(pixels, { raw: { width, height, channels: 4 } }).flip().png().toFile(path);
+    await sharp(pixels, { raw: { width, height, channels: 4 } }).png().toFile(path);
 }
 
 export interface SaveAnimationOptions {
@@ -55,7 +55,7 @@ export interface SaveAnimationOptions {
     outputFolder?: string
     scale?: number;
     computeBounds?: boolean;
-    flip?: boolean;
+    flipX?: boolean;
     forcedSize?: number;
     /** Mix sprite sound events into the output when the target format supports audio. Defaults to true. */
     audio?: boolean;
@@ -83,11 +83,8 @@ async function collectAudioInputs(sprite: DofusSprite): Promise<Array<{ buf: Buf
     const out: Array<{ buf: Buffer; delayMs: number }> = [];
     for (const ev of events) {
         try {
-            const bytes = await loader.audioBytes(ev.soundPath);
-            out.push({
-                buf: Buffer.from(bytes as ArrayBuffer),
-                delayMs: Math.max(0, Math.round(ev.startTime * 1000)),
-            });
+            const bytes = await loader.audioBytes(ev);
+            out.push({buf: Buffer.from(bytes as ArrayBuffer), delayMs: Math.max(0, Math.round(ev.startTime * 1000))});
         } catch {}
     }
     return out;
@@ -103,12 +100,12 @@ export async function saveAnimation(sprite: DofusSprite, options: SaveAnimationO
     const extension = options.extension ?? "webp"
     if (!(extension in FORMATS)) throw new Error(`Unsupported export format: ${extension}`);
     const format = FORMATS[extension];
-    const { animName, scale = 1, computeBounds = true, flip = false, forcedSize, audio = true } = options;
+    const { animName, scale = 1, computeBounds = true, flipX = false, forcedSize, audio = true } = options;
     const fileName = `${animName}.${extension}`
     const output = options.outputFolder ? path.join(options.outputFolder, fileName) : fileName;
     await fs.mkdir(path.dirname(output), { recursive: true });
 
-    const frameCount = await sprite.prepareAnimation(animName, scale, computeBounds, flip, forcedSize);
+    const frameCount = await sprite.prepareAnimation(animName, scale, computeBounds, flipX, true, forcedSize);
     if (frameCount === 0) throw new Error(`Animation '${animName}' has no frames`);
 
     const canvas = sprite.openGl.gl.canvas as HTMLCanvasElement;
@@ -133,11 +130,10 @@ export async function saveAnimation(sprite: DofusSprite, options: SaveAnimationO
     }
 
     // H264/yuv420p needs even dims.
-    let videoFilter = 'vflip';
-    if (format.requiresEvenDims) videoFilter += ',pad=ceil(iw/2)*2:ceil(ih/2)*2';
+    const videoFilter = format.requiresEvenDims ? 'pad=ceil(iw/2)*2:ceil(ih/2)*2' : '';
 
     if (audioInputs.length > 0) {
-        const filters: string[] = [`[0:v]${videoFilter}[vout]`];
+        const filters: string[] = [`[0:v]${videoFilter || 'null'}[vout]`];
         for (let i = 0; i < audioInputs.length; i++) {
             const d = audioInputs[i]!.delayMs;
             filters.push(`[${i + 1}:a]adelay=${d}|${d}[a${i}]`);
@@ -149,7 +145,8 @@ export async function saveAnimation(sprite: DofusSprite, options: SaveAnimationO
         if (format.audioCodec) args.push('-c:a', format.audioCodec);
         args.push('-shortest');
     } else {
-        args.push('-vf', videoFilter, '-map', '0:v');
+        if (videoFilter) args.push('-vf', videoFilter);
+        args.push('-map', '0:v');
     }
 
     args.push('-c:v', format.videoCodec);
