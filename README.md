@@ -15,8 +15,7 @@ npm install d3-ts-renderer
 
 ## Getting started
 
-The renderer needs to know where to fetch sprite assets (bone bundles, skins,
-body/slot data, audio banks). Call `configure()` once at startup before
+The renderer needs to know where to fetch sprite assets. Call `configure()` once at startup before
 creating any sprite.
 
 ### Browser
@@ -101,10 +100,6 @@ playback.resume();
 playback.stop();
 ```
 
-`play()` returns the frame count. Audio loops in step with the animation:
-sound events whose frame interval divides the current frame index are
-re-triggered.
-
 ## Exporting frames and animations
 
 ### Browser
@@ -115,21 +110,10 @@ re-triggered.
 | `saveToWebp(sprite, opts)`     | animated WebP `Blob`     | encodes each frame in parallel via `OffscreenCanvas`, muxes a RIFF/WEBP container                                  |
 | `saveToWebm(sprite, opts)`     | WebM `Blob` (with audio) | uses WebCodecs + [`mediabunny`](https://www.npmjs.com/package/mediabunny) when available, falls back to `MediaRecorder` |
 
-Passing a `filename` triggers a browser download in addition to returning the
-blob. `saveToWebm` mixes the sprite's sound events into the recording by
-default; pass `audio: false` to disable, or `audioPlayer` to share a decoded-
-buffer cache with an existing `SpritePlayback`.
-
-```ts
-import { saveToWebp, saveToWebm } from 'd3-ts-renderer';
-
-await saveToWebp(sprite, { animName: 'AnimMarche_2', scale: 2, filename: 'walk.webp' });
-await saveToWebm(sprite, { animName: 'AnimMarche_2', scale: 2, filename: 'walk.webm' });
-```
 
 ### Node — `saveAnimation`
 
-Pipes raw RGBA frames (and decoded sound events on extra fds) into `ffmpeg`.
+Pipes raw RGBA frames and decoded sound events into `ffmpeg`.
 Requires `ffmpeg` on the host PATH.
 
 ```ts
@@ -140,7 +124,7 @@ await saveAnimation(sprite, {
     extension: 'mp4',          // 'webm' | 'mp4' | 'webp' | 'gif' — default 'webp'
     outputFolder: 'out',
     scale: 2,
-    audio: true,               // mixed via adelay+amix when format supports audio
+    audio: true,              
 });
 ```
 
@@ -151,18 +135,6 @@ await saveAnimation(sprite, {
 | `webp`    | libwebp      | yes   | no    |
 | `gif`     | gif          | no    | no    |
 
-## Audio
-
-Sprite sound events are resolved from the FMOD-derived audio bank.
-
-```ts
-const events = await sprite.currentSoundEvents();
-//   [{ soundPath, startTime, frameCount, timestamp }, ...]
-```
-
-In the browser, `SpriteAudioPlayer` decodes and schedules them; `SpritePlayback`
-already wires it up. In Node, `saveAnimation` resolves the bytes through the
-configured loader and hands them to ffmpeg.
 
 ## Skin-asset rendering
 
@@ -181,14 +153,6 @@ Pass `isMapAnimation: true` to load animated map props (sourced from
 ```ts
 const sprite = await DofusSprite.create(look, canvas, { isMapAnimation: true });
 ```
-
-## Sub-entities
-
-Looks can carry nested sub-entities (mounts, pets, auras…). The look-string
-syntax `{...|N@cat={subLook}}` is parsed by `Look.fromString` and the renderer
-preloads each sub-entity sprite, sharing the parent's WebGL context. Their
-sub-animations are picked automatically from the parent's current animation
-name and played in lockstep on a separate buffer.
 
 ## WebGL1 / WebGL2
 
@@ -230,76 +194,6 @@ The `LE` loader subclasses `url` — it points at the FastAPI server shipped in
 install on the fly. See [Live extract](#live-extract-on-the-fly-dev-only)
 below. Audio is not supported in this mode.
 
-Advanced users can skip the singleton and build their own loader instance with
-`createDataLoader(config)`, then wire it up themselves.
-
-## Public API
-
-Asset loading
-
-- `configure(config)` / `getLoader()` / `createDataLoader(config)`
-- types: `DataLoader`, `DataConfig`, `ImageDecoder`, `TextureSource`,
-  `RawImageData`
-
-Look
-
-- `Look` — parse, build and serialise a Dofus look string
-- `SubEntityCategory` enum
-- `intToRgb`, `indexedColorsToDict`, `RGB` color helpers
-
-Sprite
-
-- `DofusSprite` — renderer entry point bound to a `<canvas>`. Notable methods:
-  `prepareAnimation`, `renderFrame`, `renderSkinAsset`, `getMaxFrame`,
-  `getAnimName`, `getSubEntity`, `currentSoundEvents`.
-- `Directions`, `oppositeDirection`, `getAnimName` direction/anim helpers
-
-Playback & export (browser)
-
-- `SpritePlayback`, `SpritePlayOptions`
-- `saveToPng`, `saveToWebp`, `saveToWebm`,
-  `SaveWebpBrowserOptions`, `SaveWebmBrowserOptions`
-
-Audio
-
-- `SpriteAudioPlayer` (browser)
-- `getAudioManager`, `AudioManager`, `SoundEvent`
-
-Node subpath (`d3-ts-renderer/node`)
-
-- `decodeImage`, `createCanvas`, `saveToPng`
-- `saveAnimation`, `SaveAnimationOptions`, `ExportFormat`
-- everything from the main entry, re-exported
-
-## Development
-
-```bash
-npm install
-npm run dev       # vite dev server for the test harness in example/index.html
-npm run typecheck
-npm run build     # tsup → dist/index.js + dist/node.js
-```
-
-The test harness (`example/index.html`) reads `VITE_DATA_STRATEGY` and
-`VITE_DATA_PATH` to point the loader at your asset bundle.
-
-### JetBrains IDE — GLSL syntax highlighting
-
-Shader sources in `src/renderer/shaders.ts` are plain template literals. Install
-the [GLSL plugin](https://plugins.jetbrains.com/plugin/18470-glsl) to get syntax
-highlighting, completion and error checking inside them — the `// language=GLSL`
-comment above each string tells the IDE which injection to apply.
-
-
-## Roadmap
-
-Not prioritized:
-- **Flash filters** — parsed from data but not applied at render time
-- **Partial-data API** — fetch individual body / skinslot entries instead of the full JSON
-- **snap shader**
-- **webm export** - saveToWebmWithMediaRecorder add [fix webm duration](https://github.com/yusitnikov/fix-webm-duration) or something similar to debug webm missing duration + seek.
-  (saveToWebmWithMediaRecorder is only use when webcodec isn't supported)
-- **live extract** - add audio support
   
 ## Data extraction
 
@@ -374,15 +268,17 @@ or `pydofus3 --help`.
 
 ### Live extract (on-the-fly, dev only)
 
-`live_extract.py` is a small FastAPI app that extracts bones and skins on
+`live_extract.py` is a small FastAPI app that extracts bones, skins, and data on
 demand from a local Dofus install. Combined with the `LE` loader strategy it
-removes the upfront extract step — useful during development.
+removes the upfront extract step.
 
-Start the server (point `game_path` at your Dofus install root) You can pass it inline or use a .env file if you prefer:
+Start the server 
 
 ```bash
 game_path=/path/to/dofus_unity npm run liveExtract
 ```
+
+`game_path` point at your Dofus install root. You can pass it with .env file if you prefer:
 
 
 Any FastAPI flag can be forwarded after `--`:
@@ -412,8 +308,7 @@ These projects use the lib — contact me to be added to the list.
 
 ## Usage
 
-Please do not use this lib to build another "skinator", and do not use it on
-Dofus fan sites that put features behind a paywall.
+Please don’t use this library to create another “skinator,” or to power Dofus fan sites that lock features behind a paywall.
 
 Aside from those two restrictions, use it however you want.
 
@@ -421,3 +316,20 @@ Aside from those two restrictions, use it however you want.
 ## Acknowledgements
 
 This project stands on the shoulders of several open-source projects. See [ACKNOWLEDGEMENTS.md](https://github.com/PyDofus/pydofus3/blob/master/ACKNOWLEDGEMENTS.md) for the full list.
+
+### JetBrains IDE — GLSL syntax highlighting
+
+Shader sources in `src/renderer/shaders.ts` are plain template literals. Install
+the [GLSL plugin](https://plugins.jetbrains.com/plugin/18470-glsl) to get syntax
+highlighting, completion, and error checking inside them — the `// language=GLSL`
+comment above each string tells the IDE which injection to apply.
+
+## Roadmap
+
+Not prioritized:
+- **Flash filters** — parsed from data but not applied at render time
+- **Partial-data API** — fetch individual body / skinslot entries instead of the full JSON
+- **snap shader**
+- **webm export** - saveToWebmWithMediaRecorder add [fix webm duration](https://github.com/yusitnikov/fix-webm-duration) or something similar to debug webm missing duration + seek.
+  (saveToWebmWithMediaRecorder is only use when webcodec isn't supported)
+- **live extract** - add audio support
