@@ -12,6 +12,7 @@ import orjson
 from UnityPy.export.Texture2DConverter import get_image_from_texture2d
 from UnityPy.files import ObjectReader
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic_settings import BaseSettings
 from pydofus3.enum_data import TypeDataOther, TypeData as TypeDataDefault, TypeDataMac, TypeDataOtherMac
@@ -64,6 +65,13 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(lifespan=lifespan)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins="*",
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 app.mount("/static", GeneratingStaticFiles(directory=settings.tpm_path, check_dir=False), name="static")
 
@@ -80,7 +88,7 @@ def bone_extract(is_map_bone: bool, bone_name: str):
         file_name = f'bones_assets_bone_{name}.bundle'
         output_type = TypeDataDefault.Bones
     output = settings.tpm_path / output_type / bone_name
-    if output.parent.exists():
+    if output.exists():
         return
     env = UnityPy.load(str(settings.game_path / folder_type / file_name))
     bone_data = env.container[f'{name}.asset'].deref_parse_as_dict()
@@ -103,7 +111,7 @@ def bone_extract(is_map_bone: bool, bone_name: str):
 @app.get("/extract/skin/{skin_id}")
 def skin_extract(skin_id: str):
     output = settings.tpm_path / TypeDataDefault.Skins / skin_id
-    if output.parent.exists():
+    if output.exists():
         return
     file_path = settings.game_path / TypeData.Skins / f'skins_assets_skin_{skin_id}.bundle'
     if not file_path.exists():

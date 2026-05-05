@@ -46,7 +46,7 @@ export interface DataConfig {
     strategy: 'url' | 'fs'|'LE';
     basePath: string;
     decodeImage?: ImageDecoder;
-    ImageExtension?: string;
+    ImageExtension?: 'png'|'webp';
 }
 
 
@@ -244,14 +244,15 @@ class LiveExtractLoader extends UrlLoader {
     private generated: Record<"Bones"|"Skins", Set<string>>;
     private readonly apiUrl: string;
     constructor(basePath: string, imgExtension:string="png" , decodeImage?: ImageDecoder) {
-        super(`${basePath}/static/Dofus_Data/StreamingAssets/Content`, imgExtension, decodeImage);
+        const cleanPath = basePath.endsWith('/') ? basePath : `${basePath}/`;
+        super(`${cleanPath}static/Dofus_Data/StreamingAssets`, imgExtension, decodeImage);
         this.generated = {Bones: new Set(), Skins: new Set()};
-        this.apiUrl = basePath;
+        this.apiUrl = cleanPath;
     }
 
     async loadSkin(skinId: number): Promise<SkinBundle> {
         if (!this.generated.Skins.has(String(skinId))) {
-            await this.fetchRes(`${this.apiUrl}/extract/skin/${skinId}`)
+            await this.fetchResApi(`extract/skin/${skinId}`)
             this.generated.Skins.add(String(skinId));
         }
         return super.loadSkin(skinId);
@@ -259,7 +260,7 @@ class LiveExtractLoader extends UrlLoader {
 
     async loadBone(boneName: string, isMapAnimation: boolean=false): Promise<BoneBundle> {
         if (!this.generated.Bones.has(boneName)) {
-            await this.fetchRes(`${this.apiUrl}/extract/bine/${isMapAnimation}/${boneName}`)
+            await this.fetchResApi(`extract/bone/${isMapAnimation}/${boneName}`)
             this.generated.Bones.add(boneName);
         }
         return super.loadBone(boneName, isMapAnimation)
@@ -267,6 +268,12 @@ class LiveExtractLoader extends UrlLoader {
 
     async loadProcessedAudioLib(): Promise<Record<string, [string, number]>> {
         return {} // no audio support
+    }
+
+    protected async fetchResApi(path: string): Promise<Response> {
+        const res = await fetch(this.apiUrl + path);
+        if (!res.ok) throw new Error(`HTTP ${res.status} fetching ${path}`);
+        return res;
     }
 
 }
