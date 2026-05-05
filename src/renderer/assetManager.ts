@@ -45,8 +45,7 @@ export abstract class AssetManager {
     }
 
     protected async _init(boneName?: string): Promise<void> {
-        await this._getBone(boneName);
-        await this._getSkinDict();
+        await Promise.all([this._getBone(boneName), this._getSkinDict()]);
         this._getCustomSymbol();
         this._getEmptyCustomisation();
         const [skinSlots, body] = await Promise.all([getSkinSlots(), this.look.getBody()]);

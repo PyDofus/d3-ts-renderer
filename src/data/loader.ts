@@ -43,19 +43,22 @@ const enum BundleFile {
 }
 
 export interface DataConfig {
-    strategy: 'url' | 'fs';
+    strategy: 'url' | 'fs'|'LE';
     basePath: string;
     decodeImage?: ImageDecoder;
+    ImageExtension?: string;
 }
 
 
 export abstract class DataLoader {
     protected readonly _base: string;
     protected readonly _decodeImage: ImageDecoder | undefined;
+    protected readonly _imgExtension: string;
 
-    constructor(basePath: string, decodeImage?: ImageDecoder) {
+    constructor(basePath: string, imgExtension:string="png",decodeImage?: ImageDecoder) {
         this._base = basePath.endsWith('/') ? basePath : `${basePath}/`;
         this._decodeImage = decodeImage;
+        this._imgExtension = imgExtension;
     }
 
     protected abstract bytes(path: string): Promise<Uint8Array>;
@@ -77,7 +80,7 @@ export abstract class DataLoader {
     }
 
     protected images(folder: string, textures: Array<{ m_PathID: string }>): Promise<TextureSource[]> {
-        return Promise.all(textures.map(t => this.image(`${folder}/${t.m_PathID}.png`)));
+        return Promise.all(textures.map(t => this.image(`${folder}/${t.m_PathID}.${this._imgExtension}`)));
     }
 
     protected async loadSkinInternal(path: string): Promise<SkinBundle> {
@@ -95,8 +98,9 @@ export abstract class DataLoader {
 
     async loadBone(boneName: string, isMapAnimation?: boolean): Promise<BoneBundle> {
         const folder = `${isMapAnimation? StreamingAssets.Animations: StreamingAssets.Bones}/${boneName}`
-        const skin = await this.loadSkinInternal(folder);
-        const bone = await this.json<AnimatedObjectDefinition>(`${folder}/bone.json`);
+        const skinPromise = this.loadSkinInternal(folder);
+        const bonePromise = this.json<AnimatedObjectDefinition>(`${folder}/bone.json`);
+        const [skin, bone] = await Promise.all([skinPromise, bonePromise])
         return {bone, skin};
     }
 
@@ -131,8 +135,8 @@ export abstract class DataLoader {
 
 class UrlLoader extends DataLoader {
     private cacheTable: Record<"Bones"|"Skins", Map<string, number>>;
-    constructor(basePath: string, decodeImage?: ImageDecoder) {
-        super(basePath, decodeImage);
+    constructor(basePath: string, imgExtension:string="png" , decodeImage?: ImageDecoder) {
+        super(basePath, imgExtension, decodeImage);
         this.cacheTable = {Bones: new Map(), Skins: new Map()};
         if (typeof window !== "undefined") void this.setCache();
 
@@ -148,7 +152,7 @@ class UrlLoader extends DataLoader {
         } catch (e) {}
     }
 
-    private async fetchRes(path: string): Promise<Response> {
+    protected async fetchRes(path: string): Promise<Response> {
         const res = await fetch(this._base + path);
         if (!res.ok) throw new Error(`HTTP ${res.status} fetching ${path}`);
         return res;
@@ -182,9 +186,15 @@ class UrlLoader extends DataLoader {
     }
 
     protected async loadSkinWithCache(path: string, timestamp:number): Promise<SkinBundle> {
+        const firstImage = this.image(`${path}/0.${this._imgExtension}?t=${timestamp}`);
+        firstImage.catch(() => {});
         const skin = await this.json<SkinAsset>(`${path}/skin.json?t=${timestamp}`);
-        const textures = await Promise.all(skin.textures.map(t => this.image(`${path}/${t.m_PathID}.png?t=${timestamp}`)));
-        return {skin, images: textures};
+        if (skin.textures.length === 0) return {skin, images: []};
+        const images: Promise<TextureSource>[] = [firstImage];
+        for (let i = 1; i < skin.textures.length; i++) {
+            images.push(this.image(`${path}/${i}.${this._imgExtension}?t=${timestamp}`));
+        }
+        return {skin, images: await Promise.all(images)};
     }
 
     async loadAnimationData(boneName: string, animName: string, isMapAnimation?: boolean): Promise<ArrayBuffer> {
@@ -200,8 +210,9 @@ class UrlLoader extends DataLoader {
     async loadBone(boneName: string, isMapAnimation?: boolean): Promise<BoneBundle> {
         const timestamp = this.cacheTable.Bones.get(boneName) ?? 0
         const folder = `${isMapAnimation? StreamingAssets.Animations: StreamingAssets.Bones}/${boneName}`
-        const skin = await this.loadSkinWithCache(folder, timestamp);
-        const bone = await this.json<AnimatedObjectDefinition>(`${folder}/bone.json?t=${timestamp}`);
+        const skinPromise = this.loadSkinWithCache(folder, timestamp);
+        const bonePromise = this.json<AnimatedObjectDefinition>(`${folder}/bone.json?t=${timestamp}`);
+        const [skin, bone] = await Promise.all([skinPromise, bonePromise])
         return {bone, skin};
     }
 
@@ -229,12 +240,45 @@ class FsLoader extends DataLoader {
 
 }
 
+class LiveExtractLoader extends UrlLoader {
+    private generated: Record<"Bones"|"Skins", Set<string>>;
+    private readonly apiUrl: string;
+    constructor(basePath: string, imgExtension:string="png" , decodeImage?: ImageDecoder) {
+        super(`${basePath}/static/Dofus_Data/StreamingAssets/Content`, imgExtension, decodeImage);
+        this.generated = {Bones: new Set(), Skins: new Set()};
+        this.apiUrl = basePath;
+    }
+
+    async loadSkin(skinId: number): Promise<SkinBundle> {
+        if (!this.generated.Skins.has(String(skinId))) {
+            await this.fetchRes(`${this.apiUrl}/extract/skin/${skinId}`)
+            this.generated.Skins.add(String(skinId));
+        }
+        return super.loadSkin(skinId);
+    }
+
+    async loadBone(boneName: string, isMapAnimation: boolean=false): Promise<BoneBundle> {
+        if (!this.generated.Bones.has(boneName)) {
+            await this.fetchRes(`${this.apiUrl}/extract/bine/${isMapAnimation}/${boneName}`)
+            this.generated.Bones.add(boneName);
+        }
+        return super.loadBone(boneName, isMapAnimation)
+    }
+
+    async loadProcessedAudioLib(): Promise<Record<string, [string, number]>> {
+        return {} // no audio support
+    }
+
+}
+
 export function createDataLoader(config: DataConfig): DataLoader {
     switch (config.strategy) {
         case "url":
-            return new UrlLoader(config.basePath, config.decodeImage);
+            return new UrlLoader(config.basePath, config.ImageExtension, config.decodeImage);
         case "fs":
-            return new FsLoader(config.basePath, config.decodeImage);
+            return new FsLoader(config.basePath, config.ImageExtension, config.decodeImage);
+        case "LE":
+            return new LiveExtractLoader(config.basePath, config.ImageExtension, config.decodeImage)
     }
 }
 

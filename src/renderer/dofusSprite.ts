@@ -58,16 +58,14 @@ export class DofusSprite extends AssetManager {
         const ctx = new RendererContext(canvas);
         ctx.unloadAllTextures();
         const sprite = new DofusSprite(look, ctx, null, options.numberFrame, options.startFrame ?? 0, options.isMapAnimation, options.subAnimLoop);
-        await sprite._init(options.boneName);
-        await sprite._preloadSubEntities();
+        await Promise.all([sprite._init(options.boneName), sprite._preloadSubEntities()])
         return sprite;
     }
 
     /** Internal factory for sub-entities (shares parent's RendererContext). */
     private static async _createChild(look: Look, openGl: RendererContext, parent: DofusSprite, numberFrame?: number): Promise<DofusSprite> {
         const sprite = new DofusSprite(look, openGl, parent, numberFrame, parent.startFrame, parent.isMapAnimation, parent.subAnimLoop);
-        await sprite._init();
-        await sprite._preloadSubEntities();
+        await Promise.all([sprite._init(), sprite._preloadSubEntities()])
         return sprite;
     }
 
@@ -103,18 +101,19 @@ export class DofusSprite extends AssetManager {
         const cached = this._animationBuffer.get(animName);
         if (cached) return cached;
 
-        await this._buildAnimInstance(animName);
+        const parentTask = this._buildAnimInstance(animName);
 
-        const childLoadTasks: Promise<void>[] = [];
+        const loadTasks: Promise<unknown>[] = [parentTask];
         for (const [key, subSprite] of this._subEntitySprites) {
             const [childAnim, flip] = getRelatedChildAnim([...subSprite.animations.keys()], animName);
             if (childAnim) {
                 this._applySubAnim(subSprite, key, flip, childAnim)
                 if (!subSprite._animInstances.has(childAnim))
-                    childLoadTasks.push(subSprite.buildBuffer(childAnim).then(() => undefined));
+                    loadTasks.push(subSprite.buildBuffer(childAnim).then(() => undefined));
             }
+            else subSprite.currentRendering = null;
         }
-        await Promise.all(childLoadTasks);
+        await Promise.all(loadTasks);
 
         const frames = this._buildBufferSync(animName);
         this._animationBuffer.set(animName, frames);

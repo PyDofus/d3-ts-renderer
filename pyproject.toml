@@ -1,0 +1,12 @@
+[project]
+name = "live-extract"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    "pydofus3 @ git+ssh://git@github.com/PyDofus/pydofus3.git",
+]
+
+[tool.fastapi]
+entrypoint= "live_extract:app"

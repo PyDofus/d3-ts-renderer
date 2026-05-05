@@ -23,7 +23,8 @@
     "dev": "vite -c example/vite.config.ts",
     "typecheck": "tsc --noEmit",
     "build": "tsup",
-    "prepublishOnly": "npm run build"
+    "prepublishOnly": "npm run build",
+    "liveExtract": "uv run fastapi run"
   },
   "devDependencies": {
     "@types/gl": "^6.0.5",
