@@ -46,6 +46,8 @@ export function makeBufferElement(ctx: RenderContext, elements: readonly NodeEle
 export type BufferFrames = Buffer[];
 
 export class Buffer extends Array<BufferEntry> {
+    private _spriteIndex = new Map<string, number>();
+
     appendNode(node: NodeElement, frameNb: number, state: RenderState, scaleMatrix: Mat3, customColor: Float32Array): void {
         for (const group of node.data) {
             if (isDataGroup(group)) {
@@ -83,6 +85,17 @@ export class Buffer extends Array<BufferEntry> {
             maxParentFrame,
             emittedAtParentFrame: frameNb,
         };
+        this._pushSprite(node.name, ref);
+    }
+
+    // Avoid duplicate sub-sprite mounting when the same carrier appears multiple times.
+    private _pushSprite(name: string, ref: BufferSubSpriteRef): void {
+        const existing = this._spriteIndex.get(name);
+        if (existing !== undefined) {
+            this.splice(existing, 1);
+            for (const [n, i] of this._spriteIndex) if (i > existing) this._spriteIndex.set(n, i - 1);
+        }
+        this._spriteIndex.set(name, this.length);
         this.push(ref);
     }
 }

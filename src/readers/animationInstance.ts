@@ -15,6 +15,7 @@ export class AnimationInstance {
     readonly frameDataPositions: readonly number[];
     private readonly _data: BinaryReader;
     private readonly _renderStates: RenderState[];
+    private _renderStateFresh = true;
 
     constructor(data: BinaryReader) {
         this.frameCount = data.u16;
@@ -39,6 +40,7 @@ export class AnimationInstance {
 
     /** Yields frame indices, advancing internal render-state cursors as a side effect. */
     * iterFrameData(maxFrame?: number, startFrame = 0): Iterable<number> {
+        this._claimRenderStates();
         const limit = maxFrame ?? this.frameCount;
         const start = startFrame < 0 ? Math.max(this.frameCount + startFrame, 0) : startFrame;
 
@@ -62,5 +64,10 @@ export class AnimationInstance {
             state.compute(this._data);
             yield state;
         }
+    }
+
+    private _claimRenderStates(): void {
+        if (!this._renderStateFresh) for (let i = 0; i < this._renderStates.length; i++) this._renderStates[i]!.reset();
+        this._renderStateFresh = false;
     }
 }

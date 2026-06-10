@@ -155,7 +155,7 @@ const sprite = await DofusSprite.create(look, canvas, { isMapAnimation: true });
 ```
 
 ## WebGL1 / WebGL2
-
+[index.html](example/index.html)
 `RendererContext` prefers WebGL2 and falls back to WebGL1 + extensions when it
 isn't available:
 
@@ -333,3 +333,4 @@ Not prioritized:
 - **webm export** - saveToWebmWithMediaRecorder add [fix webm duration](https://github.com/yusitnikov/fix-webm-duration) or something similar to debug webm missing duration + seek.
   (saveToWebmWithMediaRecorder is only use when webcodec isn't supported)
 - **live extract** - add audio support
+- **audio** - find a way to also extract fmod parameter, especially player/avatar/bark parameters

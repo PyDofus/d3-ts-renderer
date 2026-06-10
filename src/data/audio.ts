@@ -1,5 +1,9 @@
-import {type SoundBoneData} from "./types";
+import {type SoundBoneData, type FmodTrigger, type FmodParameterInstrument} from "./types";
 import {getLoader} from "./loader";
+
+
+// if BARKS_LABEL change avoid hardcoded it and get it directly from AudioManagerLibrary.m_parameterInfoSet ... label
+const BARKS_LABEL = [19, 18, 13, 12, 33, 32, 15, 14, 7, 6, 3, 2, 35, 34, 17, 16, 5, 4, 37, 36, 25, 24, 27, 26, 23, 22, 21, 20, 9, 8, 31, 30, 11, 10, 29, 28, 41, 40]
 
 export interface SoundEvent {
     soundPath: string;
@@ -35,7 +39,7 @@ export class AudioManager {
         return new AudioManager(audio_lib, bones);
     }
 
-    async getSoundAnim(soundData: ReadonlyArray<readonly [string, number, number]>, fps: number = 60): Promise<SoundEvent[]> {
+    async getSoundAnim(soundData: ReadonlyArray<readonly [string, number, number]>, fps: number = 60, breedKey?: number): Promise<SoundEvent[]> {
         const result: SoundEvent[] = [];
         const loader = getLoader();
         for (const [anim, boneId, frameCount] of soundData) {
@@ -57,25 +61,44 @@ export class AudioManager {
                     continue;
                 }
                 if (!eventData) continue;
-                for (const trigger of eventData.triggers) {
-                    let soundPath: string;
-                    if (trigger.type === 'Waveform') {
-                        soundPath = `${eventPath}/${trigger.sampleFile}`;
-                    } else if (trigger.type === 'Multi' && trigger.playlist) {
-                        const sound = trigger.playlist.entries.find(e => e.type === 'Waveform');
-                        if (!sound) continue;
-                        soundPath = `${eventPath}/${trigger.instrumentId}/${sound.sampleFile}`;
-                    } else {
-                        continue;
-                    }
-                    for (const startFrame of startFrames.split('|')) {
-                        const startTime = ((parseInt(startFrame, 10) - 1) / fps) + trigger.start;
-                        result.push({soundPath, timestamp, startTime, frameCount});
+
+                for (const trigger of eventData.triggers) this.pushAudio(result, trigger, eventPath, startFrames, fps, timestamp, frameCount);
+                if (breedKey!==undefined) {
+                    const paramIndex = BARKS_LABEL.indexOf(breedKey);
+                    if (paramIndex === -1) continue;
+                    for (const parameters of eventData.parameterGroups) {
+                        if (parameters.parameter !== "Player/Classes_Barks") continue;
+                        const param = parameters.instruments.find(
+                            p => paramIndex >= p.parameterRange.min && paramIndex < p.parameterRange.max
+                        );
+                        if (param) this.pushAudio(result, param, eventPath, startFrames, fps, timestamp, frameCount);
                     }
                 }
             }
         }
         return result;
+    }
+
+    private pushAudio(result:SoundEvent[] ,trigger: FmodTrigger | FmodParameterInstrument, eventPath:string, startFrames:string, fps:number, timestamp:number, frameCount:number) {
+        const soundPath = this.resolveSoundPath(eventPath, trigger);
+        if (!soundPath) return;
+        const start = trigger.start ?? 0
+        for (const startFrame of startFrames.split('|')) {
+            const startTime = ((parseInt(startFrame, 10) - 1) / fps) + start;
+            result.push({soundPath, timestamp, startTime, frameCount});
+        }
+    }
+
+    private resolveSoundPath(eventPath: string, trigger: FmodTrigger | FmodParameterInstrument): string | null {
+        if (trigger.type === 'Waveform') {
+            return `${eventPath}/${trigger.sampleFile}`;
+        }
+        if (trigger.type === 'Multi' && trigger.playlist) {
+            const sound = trigger.playlist.entries.find(e => e.type === 'Waveform');
+            if (!sound) return null;
+            return `${eventPath}/${trigger.instrumentId}/${sound.sampleFile}`;
+        }
+        return null;
     }
 }
 

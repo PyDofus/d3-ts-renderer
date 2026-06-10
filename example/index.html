@@ -78,11 +78,12 @@
   <pre id="error"></pre>
 
   <script type="module">
-    import { DofusSprite, configure, SpritePlayback, saveToPng, saveToWebp, saveToWebm, Look } from '../src/index.ts';
+    import { DofusSprite, configure, SpritePlayback, Look } from '../src/index.ts';
 
     configure({
       strategy: import.meta.env.VITE_DATA_STRATEGY ?? 'url',
       basePath: import.meta.env.VITE_DATA_PATH ?? '',
+      ImageExtension: "webp"
     });
 
     const loadBtn   = document.getElementById('loadBtn');
@@ -148,7 +149,6 @@
         const isMapAnimation = !!mapAnimEl.checked;
         infoEl.textContent = `Creating sprite for bone ${look.bone}…`;
         loadedSprite = await DofusSprite.create(look, canvas, { boneName, isMapAnimation });
-
         const animNames = [...loadedSprite.animations.keys()];
         animNames.sort((a,b) => a.localeCompare(b))
         animSel.innerHTML = animNames.map(n => `<option value="${n}">${n}</option>`).join('');
@@ -168,9 +168,7 @@
       if (!loadedSprite) return;
       errorEl.textContent = '';
       try {
-        stopPlayback();
-        loadedSprite.renderFrame(currentFrame);
-        await saveToPng(canvas, `frame_${currentFrame}.png`);
+        await playback.capturePng(`frame_${currentFrame}.png`);
       } catch (err) { showError(err); }
     });
 
@@ -178,10 +176,9 @@
       if (!loadedSprite) return;
       errorEl.textContent = '';
       try {
-        stopPlayback();
-        const animName = animSel.value;
+        const animName = playback.animation;
         infoEl.textContent = `Encoding '${animName}' to animated WebP…`;
-        await saveToWebp(loadedSprite, {animName, scale: getScale(), filename: `${animName}.webp`,});
+        await playback.captureWebp(`${animName}.webp`);
         infoEl.textContent = `Saved ${animName}.webp`;
       } catch (err) {
         showError(err);
@@ -193,10 +190,9 @@
       if (!loadedSprite) return;
       errorEl.textContent = '';
       try {
-        stopPlayback();
-        const animName = animSel.value;
+        const animName = playback.animation;
         infoEl.textContent = `Recording '${animName}' to WebM…`;
-        await saveToWebm(loadedSprite, {animName, scale: getScale(), filename: `${animName}.webm`, audioPlayer: playback.audioPlayer ?? undefined});
+        await playback.captureWebm(`${animName}.webm`);
         infoEl.textContent = `Saved ${animName}.webm`;
       } catch (err) {
         showError(err);
@@ -216,7 +212,7 @@
         startBn.style.display = 'none';
         stopBtn.style.display = '';
 
-        const frameCount = await playback.play(loadedSprite, animName, {scale: getScale(), audio: audioToggleEl.checked, onFrame: i => { currentFrame = i; }});
+        const frameCount = await playback.play(loadedSprite, {animName, scale: getScale(), audio: audioToggleEl.checked, onFrame: i => { currentFrame = i; }});
         infoEl.textContent = `Animation '${animName}' — ${frameCount} frames - ${loadedSprite.data.defaultFrameRate} fps`;
       } catch (err) {
         showError(err);

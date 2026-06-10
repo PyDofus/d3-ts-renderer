@@ -7,17 +7,30 @@ import type {DofusSprite} from '../renderer/dofusSprite';
  */
 export class SpriteAudioPlayer {
     private readonly _ctx: AudioContext;
+    private readonly _gain: GainNode;
     private readonly _cache = new Map<string, Promise<AudioBuffer>>();
     private _sources: AudioBufferSourceNode[] = [];
     private _lastEvents: SoundEvent[] = [];
     private _lastBuffers: (AudioBuffer | undefined)[] = [];
+    private _muted = false;
 
     constructor(ctx?: AudioContext) {
         this._ctx = ctx ?? new AudioContext();
+        this._gain = this._ctx.createGain();
+        this._gain.connect(this._ctx.destination);
     }
 
     get context(): AudioContext {
         return this._ctx;
+    }
+
+    get muted(): boolean {
+        return this._muted;
+    }
+
+    set muted(value: boolean) {
+        this._muted = value;
+        this._gain.gain.value = value ? 0 : 1;
     }
 
     stop(): void {
@@ -59,7 +72,7 @@ export class SpriteAudioPlayer {
     private _pushBuffer(buffer:AudioBuffer, currentTime: number, event: SoundEvent) {
         const src = this._ctx.createBufferSource();
         src.buffer = buffer;
-        src.connect(this._ctx.destination);
+        src.connect(this._gain);
         src.start(currentTime + Math.max(0, event.startTime));
         this._sources.push(src);
     }

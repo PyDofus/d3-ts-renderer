@@ -2,6 +2,7 @@ import {BlendMode} from '../readers/renderState';
 import {type Mat3, mat3Identity, mat3MulInto} from '../math';
 import type {TextureSource} from '../data/types';
 import {MASK_FRAG, MASK_VERT, RENDER_FRAG, RENDER_VERT} from './shaders';
+import {AssetStore} from './assetStore';
 
 const enum FlashBlendKeyword {
     NONE = 0,
@@ -30,6 +31,7 @@ abstract class GLBackend {
     abstract readonly blendModes: Readonly<Record<number, BlendParams>>;
 
     abstract createVAO(): VAO | null;
+
     abstract bindVAO(v: VAO | null): void;
 
     protected static _buildBlendModes(gl: WebGLRenderingContext, MIN: number, MAX: number): Readonly<Record<number, BlendParams>> {
@@ -124,8 +126,13 @@ export class RendererContext {
     readonly gl: WebGLRenderingContext | WebGL2RenderingContext;
     readonly program: WebGLProgram;
     readonly maskProgram: WebGLProgram;
+    readonly offset = {x: 0, y: 0};
 
-    private _textures: WebGLTexture[] = [];
+    /** Shared pool of bone/skin resources (parsed asset + GL texture block) for every sprite on this context. */
+    readonly assetStore = new AssetStore(this);
+
+    private _textures: (WebGLTexture | null)[] = [];
+    private _freeSlots = new Set<number>();
     private _uniformCache = new Map<WebGLProgram, Map<string, WebGLUniformLocation>>();
     private _currentProgram: WebGLProgram | null = null;
 
@@ -139,11 +146,10 @@ export class RendererContext {
 
     private readonly _projection: Mat3 = mat3Identity();
     private readonly _projTransfo: Mat3 = mat3Identity();
-
     private readonly _backend: GLBackend;
 
     constructor(canvas: HTMLCanvasElement) {
-        const opts: WebGLContextAttributes = {stencil: true, alpha: true, premultipliedAlpha: false, depth:false};
+        const opts: WebGLContextAttributes = {stencil: true, alpha: true, premultipliedAlpha: false, depth: false};
 
         const gl2 = canvas.getContext('webgl2', opts);
         if (gl2) {
@@ -207,6 +213,7 @@ export class RendererContext {
         const tex = gl.createTexture();
         if (!tex) throw new Error('Failed to create WebGL texture.');
         const slot = index !== undefined ? index : this._textures.length;
+        this._freeSlots.delete(slot);
         gl.activeTexture(gl.TEXTURE0 + slot);
         gl.bindTexture(gl.TEXTURE_2D, tex);
         if ('data' in image) {
@@ -230,8 +237,54 @@ export class RendererContext {
     }
 
     unloadAllTextures(): void {
-        for (const tex of this._textures) this.gl.deleteTexture(tex);
+        for (const tex of this._textures) if (tex) this.gl.deleteTexture(tex);
         this._textures = [];
+        this._freeSlots.clear();
+    }
+
+    /**
+     * Upload a contiguous run of textures and return the base slot.
+     * Reuses a previously freed run when one of the right size exists, otherwise grows the pool.
+     */
+    loadTextureBlock(images: TextureSource[]): number {
+        const base = this._reserveBlock(images.length);
+        for (let i = 0; i < images.length; i++) this.loadTexture(images[i]!, base + i);
+        return base;
+    }
+
+    /** Delete the GL textures in [base, base+count) and mark their slots reusable. */
+    freeTextureBlock(base: number, count: number): void {
+        for (let i = base; i < base + count; i++) {
+            const tex = this._textures[i];
+            if (tex) {
+                this.gl.deleteTexture(tex);
+                this._textures[i] = null;
+            }
+            if (i < this._textures.length) this._freeSlots.add(i);
+        }
+    }
+
+    /** Find a contiguous run of `count` reusable slots, else return the append index. */
+    private _reserveBlock(count: number): number {
+        if (count <= 0) return this._textures.length;
+        if (this._freeSlots.size >= count) {
+            if (count === 1) {
+                const slot = this._freeSlots.values().next().value as number;
+                this._freeSlots.delete(slot);
+                return slot;
+            }
+            const sorted = [...this._freeSlots].sort((a, b) => a - b);
+            let runLen = 1;
+            for (let i = 1; i < sorted.length; i++) {
+                runLen = sorted[i] === sorted[i - 1]! + 1 ? runLen + 1 : 1;
+                if (runLen === count) {
+                    const base = sorted[i]! - count + 1;
+                    for (let s = base; s < base + count; s++) this._freeSlots.delete(s);
+                    return base;
+                }
+            }
+        }
+        return this._textures.length;
     }
 
     get textureCount(): number {
@@ -240,20 +293,31 @@ export class RendererContext {
 
     // ── bounds / size ─────────────────────────────────────────────────────────────
 
-    setBound(width: number, height: number, offsetX: number, offsetY: number, scale: number, flipX: boolean = false, flipY: boolean= false): void {
+    setBound(width: number, height: number, offsetX: number, offsetY: number, scale: number, flipX: boolean = false, flipY: boolean = false): void {
         const gl = this.gl;
-        const w = Math.ceil(width * scale);
-        const h = Math.ceil(height * scale);
+
+        // some video codecs require even dimensions
+        const w = Math.ceil(width * scale / 2) * 2;
+        const h = Math.ceil(height * scale / 2) * 2;
         gl.canvas.width = w;
         gl.canvas.height = h;
         gl.viewport(0, 0, w, h);
 
+        this.offset.x = (flipX ? offsetX + width : -offsetX) * scale;
+        this.offset.y = (height + offsetY) * scale;
+
         const sfx = flipX ? -2 / width : 2 / width;
         const sfy = flipY ? -2 / height : 2 / height;
         const p = this._projection;
-        p[0] = sfx; p[1] = 0;   p[2] = 0;
-        p[3] = 0;   p[4] = sfy; p[5] = 0;
-        p[6] = -(flipX? offsetX+ width: offsetX) * sfx - 1; p[7] = -(flipY? offsetY+ height: offsetY) * sfy - 1; p[8] = 1;
+        p[0] = sfx;
+        p[1] = 0;
+        p[2] = 0;
+        p[3] = 0;
+        p[4] = sfy;
+        p[5] = 0;
+        p[6] = -(flipX ? offsetX + width : offsetX) * sfx - 1;
+        p[7] = -(flipY ? offsetY + height : offsetY) * sfy - 1;
+        p[8] = 1;
     }
 
     // ── per-draw uniforms ─────────────────────────────────────────────────────────

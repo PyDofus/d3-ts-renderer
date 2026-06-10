@@ -100,7 +100,7 @@ export abstract class DataLoader {
         const folder = `${isMapAnimation? StreamingAssets.Animations: StreamingAssets.Bones}/${boneName}`
         const skinPromise = this.loadSkinInternal(folder);
         const bonePromise = this.json<AnimatedObjectDefinition>(`${folder}/bone.json`);
-        const [skin, bone] = await Promise.all([skinPromise, bonePromise])
+        const [skin, bone] = await Promise.all([skinPromise, bonePromise]);
         return {bone, skin};
     }
 
@@ -174,7 +174,7 @@ class UrlLoader extends DataLoader {
     protected async imageBitmap(path: string): Promise<ImageBitmap> {
         const res = await this.fetchRes(path);
         const blob = await res.blob();
-        return createImageBitmap(blob);
+        return createImageBitmap(blob, {premultiplyAlpha:"none"});
     }
 
     async fmodEvent(eventPath: string, timestamp: number): Promise<FmodEvent>  {

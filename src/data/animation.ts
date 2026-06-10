@@ -1,13 +1,7 @@
 import {Directions, oppositeDirection} from "./directions";
 
-export function getAnimName(animations: string[], direction: Directions, bone: number, name?: string): [string, boolean] {
-    let searchName = false;
-    let baseName = name;
-
-    if (baseName === undefined) {
-        baseName = bone === 1 ? 'AnimStatiqueExplo0' : 'AnimStatique';
-        searchName = true;
-    }
+export function getAnimName(animations: string[], direction: Directions, bone: number, name?: string, raise:boolean=true): [string, boolean] {
+    const baseName = name === undefined ? (bone === 1 ? 'AnimStatiqueExplo0' : 'AnimStatique') : name;
 
     const candidate = `${baseName}_${direction}`;
     if (animations.includes(candidate)) return [candidate, false];
@@ -18,17 +12,36 @@ export function getAnimName(animations: string[], direction: Directions, bone: n
         if (animations.includes(flipped)) return [flipped, true];
     }
 
-    if (searchName) {
+    if (name === undefined) {
         for (const d of opp !== undefined ? [direction, opp] : [direction]) {
             const found = animations.find(k => k.endsWith(`_${d}`));
             if (found) return [found, d !== direction];
         }
         if (animations.length > 0) return [animations[0]!, false];
-    }
+    } else if (!raise) return getAnimName(animations, direction, bone, undefined, true);
 
     throw new Error(
         `Cannot find animation '${baseName}' for direction ${direction}. Available: ${animations.join(', ')}`,
     );
+}
+
+
+export function directionsByAnim(animations: Iterable<string>): Record<string, Directions[]> {
+    const sets: Record<string, Set<Directions>> = {};
+    for (const key of animations) {
+        const i = key.lastIndexOf('_');
+        if (i < 0) continue;
+        const dir = Number(key.slice(i + 1)) as Directions;
+        if (!Number.isInteger(dir)) continue;
+        const base = key.slice(0, i);
+        const set = (sets[base] ??= new Set<Directions>());
+        set.add(dir);
+        const opp = oppositeDirection(dir);
+        if (opp !== undefined) set.add(opp);
+    }
+    const out: Record<string, Directions[]> = {};
+    for (const [base, set] of Object.entries(sets)) out[base] = [...set].sort((a, b) => a - b);
+    return out;
 }
 
 

@@ -56,7 +56,7 @@ export interface Rectf {
 export interface SkinAsset extends MonoBehaviour {
     m_keys: string[];
     m_values: SkinAssetPart[];
-    triangles: number[];
+    triangles: Uint16Array | number[];
     vertices: AnimationGeometryVertex[];
     referencedSymbols: string[];
     emptyCustomisations: string[];
@@ -265,6 +265,21 @@ export interface FmodTrigger {
     playlist?: Playlist;
 }
 
+export interface FmodParameterInstrument {
+    parameterRange: { min: number; max: number };
+    instrumentId: string;
+    type: string;
+    start?: number;
+    sampleFile: string;
+    playlist?: Playlist;
+}
+
+export interface FmodParameterGroup {
+    parameter: string;
+    instruments: FmodParameterInstrument[];
+}
+
 export interface FmodEvent {
     triggers: FmodTrigger[];
+    parameterGroups: FmodParameterGroup[];
 }

@@ -1,6 +1,4 @@
-import {getBoneData} from '../data/boneLoader';
-import {getSkin} from '../data/skinLoader';
-import type {AnimatedObjectDefinition, Animation, SkinAsset, TextureSource} from '../data/types';
+import type {AnimatedObjectDefinition, Animation, SkinAsset} from '../data/types';
 import type {Look} from '../look/look';
 import type {RenderState} from '../readers/renderState';
 import {type Mat3, mat3Identity} from '../math';
@@ -12,6 +10,7 @@ import {
 } from './nodeStructure';
 import {SkinAssetPart} from './skinAssetPart';
 import type {RendererContext} from './rendererContext';
+import {type SkinResource} from './assetStore';
 import type {DofusSprite} from './dofusSprite';
 import {getSkinSlots} from "../data/skinSlots";
 
@@ -57,20 +56,20 @@ export abstract class AssetManager {
 
     protected async _getBone(boneName?: string): Promise<void> {
         const resolved = boneName ?? (this.look.bone !== 1 ? String(this.look.bone) : '1-static');
-        const {bone, skin} = await getBoneData(resolved, this.isMapAnimation);
-        this.data = bone;
-        this.boneAsset = skin.skin;
-        this._loadTextures(skin.images, 'main');
+        const r = await this.openGl.assetStore.bone(resolved, this.isMapAnimation);
+        this.data = r.data;
+        this.boneAsset = r.boneAsset;
+        this._textureIndexDict.set('main', r.textureBase);
     }
 
     private async _getSkinDict(): Promise<void> {
-        const results = new Map<number, any>(); // order is important for skinDict
+        const results = new Map<number, SkinAsset>(); // order is important for skinDict
         await Promise.all(
             this.look.skins.map(async skinId => {
                 try {
-                    const {skin, images} = await getSkin(skinId);
-                    this._loadTextures(images, String(skinId));
-                    results.set(skinId, skin);
+                    const r = await this.openGl.assetStore.skin(skinId);
+                    this._setSkinOffset(skinId, r);
+                    results.set(skinId, r.skin);
                 } catch {}
             }),
         );
@@ -78,6 +77,12 @@ export abstract class AssetManager {
             const skin = results.get(skinId);
             if (skin !== undefined) this._skinsDict.set(skinId, skin);
         }
+    }
+
+    /** Record a skin's shared texture base under both lookup keys used while building parts. */
+    private _setSkinOffset(skinId: number, r: SkinResource): void {
+        this._textureIndexDict.set(String(skinId), r.textureBase);
+        this._textureIndexDict.set(r.skin.m_Name, r.textureBase);
     }
 
     private _getCustomSymbol(): void {
@@ -92,15 +97,6 @@ export abstract class AssetManager {
         this._intendedEmpty.clear();
         for (const skin of this._skinsDict.values()) {
             for (const e of skin.emptyCustomisations) this._intendedEmpty.add(e);
-        }
-    }
-
-    private _loadTextures(images: TextureSource[], key: string): void {
-        if (key === 'main' && this._textureIndexDict.has('main')) {
-            this.openGl.loadTexture(images[0]!, this._textureIndexDict.get('main'));
-        } else {
-            this._textureIndexDict.set(key, this.openGl.textureCount);
-            for (const img of images) this.openGl.loadTexture(img);
         }
     }
 
@@ -275,13 +271,56 @@ export abstract class AssetManager {
 
     abstract getSubEntity(_index: string): DofusSprite|undefined;
 
-    async changeBone(boneName: string): Promise<void> {
+    async changeBone(boneName?: string, cleanCache = true): Promise<void> {
         await this._getBone(boneName);
         this.animations = this._getAnimationDict();
-        this._dictPartIndex.clear();
+        if (cleanCache) this._clearCustomCaches();
+    }
+
+    protected _clearCustomCaches(): void {
         this._dictPartIndexCustom.clear();
+        this._dictPartIndex.clear();
         this._dictPart.clear();
         this._processedPart.clear();
+    }
+
+    async changeSkins(newSkins: number[], cleanCache = true): Promise<void> {
+        for (const id of this.look.skins) {
+            if (!newSkins.includes(id)) {
+                this._skinsDict.delete(id);
+                this._textureIndexDict.delete(String(id));
+            }
+        }
+
+        await Promise.all(newSkins.map(async id => {
+            if (this._skinsDict.has(id)) return;
+            try {
+                const r = await this.openGl.assetStore.skin(id);
+                this._setSkinOffset(id, r);
+                this._skinsDict.set(id, r.skin);
+            } catch {}
+        }));
+
+        const ordered = new Map<number, SkinAsset>();
+        for (const id of newSkins) {
+            const skin = this._skinsDict.get(id);
+            if (skin !== undefined) ordered.set(id, skin);
+        }
+        this._skinsDict = ordered;
+        this.look.skins = [...newSkins];
+
+        this._getCustomSymbol();
+        this._getEmptyCustomisation();
+        const [skinSlots, body] = await Promise.all([getSkinSlots(), this.look.getBody()]);
+        this._rulesEmpty = skinSlots.slotFromBody(this.look.skins, body);
+
+        if (cleanCache) this._clearCustomCaches();
+    }
+
+    /** Add the resources this manager currently references */
+    collectResourceKeys(bones: Set<string>, skins: Set<number>): void {
+        bones.add(this.data.m_Name);
+        for (const id of this.look.skins) skins.add(id);
     }
 
     getSymbolNameIndex(symbolName: string | undefined, addIfNotExist = false): number {

@@ -65,6 +65,20 @@ export class RenderState {
     colorMatrix: Float32Array | null = null;
     flashFilter: FlashFilters | null = null;
 
+    reset(): void {
+        this.tranfoMatrix = mat3Identity();
+        this.spriteIndex = -1;
+        this.customisationIndex = -1;
+        this.childrenRecursiveCount = -1;
+        this.alpha = 1;
+        this.multiplicativeColor = [1, 1, 1, 1];
+        this.additiveColor = [0, 0, 0, 0];
+        this.maskFlags = 0;
+        this.blendMode = 0;
+        this.colorMatrix = null;
+        this.flashFilter = null;
+    }
+
     compute(data: BinaryReader): void {
         const num = data.u8;
 

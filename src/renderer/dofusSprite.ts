@@ -1,7 +1,8 @@
 import {getAnimation} from '../data/boneLoader';
 import type {Look} from '../look/look';
+import type {SubEntityCategory} from '../look/enums';
 import {type Directions, flipAnimNameString} from '../data/directions';
-import {getAnimName, getRelatedChildAnim} from '../data/animation';
+import {directionsByAnim, getAnimName, getRelatedChildAnim} from '../data/animation';
 import type {AnimationInstance} from '../readers/animationInstance';
 import {type Bounds2D, type Mat3, mat3Identity, mat3Scale} from '../math';
 import {RenderState} from '../readers/renderState';
@@ -10,6 +11,17 @@ import {Buffer, type BufferFrames, computeBufferLocalBounds} from './buffer';
 import {FrameRenderer} from './frameRenderer';
 import {RendererContext} from './rendererContext';
 import {getAudioManager, type SoundEvent} from '../data/audio';
+
+
+export const LookChange = {
+    /** Nothing requiring a buffer rebuild changed */
+    None: 0,
+    /** only rebuilds this sprite's buffers + refreshes bounds. */
+    Soft: 1,
+    /** parent must rebuild its buffers. */
+    Structural: 2,
+} as const;
+export type LookChange = typeof LookChange[keyof typeof LookChange];
 
 export class DofusSprite extends AssetManager {
     readonly parent: DofusSprite | null;
@@ -36,7 +48,7 @@ export class DofusSprite extends AssetManager {
         parent: DofusSprite | null,
         numberFrame?: number,
         startFrame = 0,
-        isAnimMap?:boolean,
+        isAnimMap?: boolean,
         subAnimLoop = true,
     ) {
         super(look, openGl, isAnimMap);
@@ -53,7 +65,13 @@ export class DofusSprite extends AssetManager {
     static async create(
         look: Look,
         canvas: HTMLCanvasElement,
-        options: { boneName?: string; numberFrame?: number; startFrame?: number; isMapAnimation?: boolean, subAnimLoop?: boolean} = {},
+        options: {
+            boneName?: string;
+            numberFrame?: number;
+            startFrame?: number;
+            isMapAnimation?: boolean,
+            subAnimLoop?: boolean
+        } = {},
     ): Promise<DofusSprite> {
         const ctx = new RendererContext(canvas);
         ctx.unloadAllTextures();
@@ -74,7 +92,7 @@ export class DofusSprite extends AssetManager {
         const tasks: Promise<void>[] = [];
         for (const [category, subEntities] of this.look.subEntities) {
             for (const [typeIndex, subLook] of subEntities) {
-                const index = `carried_${category}_${typeIndex}`;
+                const index = DofusSprite.subEntityKey(category, typeIndex);
                 tasks.push(this._ensureSubEntity(subLook, index).then(() => undefined));
             }
         }
@@ -108,10 +126,9 @@ export class DofusSprite extends AssetManager {
             const [childAnim, flip] = getRelatedChildAnim([...subSprite.animations.keys()], animName);
             if (childAnim) {
                 this._applySubAnim(subSprite, key, flip, childAnim)
-                if (!subSprite._animInstances.has(childAnim))
+                if (!subSprite._animationBuffer.has(childAnim))
                     loadTasks.push(subSprite.buildBuffer(childAnim).then(() => undefined));
-            }
-            else subSprite.currentRendering = null;
+            } else subSprite.currentRendering = null;
         }
         await Promise.all(loadTasks);
 
@@ -143,7 +160,8 @@ export class DofusSprite extends AssetManager {
             const stateIter = animMeta.iterRenderStates();
             for (const node of stateIter) {
                 const [found, skinPart, isCustomised] = this.getSkinAssetPart(node);
-                if (found && skinPart !== null) {
+                if (!found) continue
+                if (skinPart !== null) {
                     const part = this.processPart(skinPart);
                     buf.appendNode(part, frameNumber, node, scaleMatrix, this.look.flatColorArray);
                 }
@@ -172,7 +190,7 @@ export class DofusSprite extends AssetManager {
         return bounds;
     }
 
-    setupSubAnim(sprite: DofusSprite, key:string): void {
+    setupSubAnim(sprite: DofusSprite, key: string): void {
         if (this.currentRendering !== null) {
             const [name, flip] = getRelatedChildAnim([...sprite.animations.keys()], this.currentRendering);
             if (!name) return
@@ -195,7 +213,7 @@ export class DofusSprite extends AssetManager {
     // ── Rendering ─────────────────────────────────────────────────────────────────
 
     /** Prepare canvas size and pre-build buffers for an animation. */
-    async prepareAnimation(animName: string, scale: number, computeBounds:boolean = false, flipX: boolean = false, flipY: boolean=false, forcedSize?: number): Promise<number> {
+    async prepareAnimation(animName: string, scale: number, computeBounds: boolean = false, flipX: boolean = false, flipY: boolean = false, forcedSize?: number): Promise<number> {
         if (!this.animations.has(animName)) {
             const flipped = flipAnimNameString(animName)
             if (!this.animations.has(flipped))
@@ -212,11 +230,18 @@ export class DofusSprite extends AssetManager {
         return buffers.length
     }
 
+    resize(scale: number, forcedSize?: number): void {
+        if (!this.currentRendering) return;
+        const anim = this.animations.get(this.currentRendering);
+        if (!anim) return;
+        this.renderer.setRenderSize(scale, anim.bounds, this.getLocalBounds(this.currentRendering), true, forcedSize, this.flip, false);
+    }
+
     /** Render a single skin asset (by graphic index or symbol name) to the canvas. */
     renderSkinAsset(graphic: number = -1, symbolName?: string, scale: number = 1.0): void {
         const customIndex = this.getSymbolNameIndex(symbolName, true);
         if (graphic < 0 && customIndex < 0) {
-            throw new Error(`You must to define: graphic (0-${this.data.graphics.length-1}) or symbolName ${this.customSymbolRefNames().join(", ")}`);
+            throw new Error(`You must to define: graphic (0-${this.data.graphics.length - 1}) or symbolName ${this.customSymbolRefNames().join(", ")}`);
         }
 
         const state = new RenderState();
@@ -248,8 +273,12 @@ export class DofusSprite extends AssetManager {
         return this._animationBuffer.get(animName)?.length ?? 0;
     }
 
-    getAnimName(direction: Directions, name?: string): [string, boolean] {
-        return getAnimName([...this.animations.keys()], direction, this.look.bone, name);
+    getAnimName(direction: Directions, name?: string, raise:boolean=true): [string, boolean] {
+        return getAnimName([...this.animations.keys()], direction, this.look.bone, name, raise);
+    }
+
+    availableDirections(): Record<string, Directions[]> {
+        return directionsByAnim(this.animations.keys());
     }
 
     async getMaxFrame(animName: string): Promise<number> {
@@ -264,14 +293,126 @@ export class DofusSprite extends AssetManager {
         return Math.max(0, ...counts);
     }
 
-    override getSubEntity(index: string): DofusSprite|undefined {
+    /**
+     * Mutate this sprite to render `newLook`, re-fetching only what changed.
+     * Returns the change level so a parent sprite knows whether its own buffers survive.
+     */
+    async changeLook(newLook: Look, boneName?: string): Promise<LookChange> {
+        const boneChanged = newLook.bone !== this.look.bone || (boneName ?? String(newLook.bone) !== this.data.m_Name);
+        const skinsChanged = !this.look.sameSkins(newLook);
+        const sizeChanged = newLook.size !== this.look.size;
+        const tasks: Promise<unknown>[] = [];
+
+        if (sizeChanged) this.look.size = newLook.size;
+        if (boneChanged) {
+            this.look.bone = newLook.bone;
+            tasks.push(this.changeBone(boneName, false).then(() => this._animInstances.clear()));
+        }
+        if (skinsChanged) tasks.push(this.changeSkins(newLook.skins, false));
+        this.look.Color = new Map(newLook.Color);
+
+        const subPromise = this._changeSubEntities(newLook);
+        tasks.push(subPromise);
+        await Promise.all(tasks);
+        const subChange = await subPromise;
+
+        if (boneChanged || skinsChanged || subChange === LookChange.Structural) this._clearCustomCaches();
+        const selfChanged = boneChanged || skinsChanged || sizeChanged;
+        if (selfChanged || subChange === LookChange.Structural) {
+            this._animationBuffer.clear();
+            this._animationBounds.clear();
+            this._subSpriteRenderingName.clear();
+        } else if (subChange === LookChange.Soft) {
+            await this._refreshSubBuffers();
+        }
+
+        if (this.parent === null) this._sweepStore();
+        if (boneChanged) return LookChange.Structural;
+        return selfChanged || subChange !== LookChange.None ? LookChange.Soft : LookChange.None;
+    }
+
+
+    private async _refreshSubBuffers(): Promise<void> {
+        const tasks: Promise<unknown>[] = [];
+        for (const animName of this._animationBuffer.keys()) {
+            const mounted = this._subSpriteRenderingName.get(animName);
+            if (!mounted) continue;
+            for (const [key, childAnim] of mounted) {
+                const sprite = this._subEntitySprites.get(key);
+                if (sprite && !sprite._animationBuffer.has(childAnim))
+                    tasks.push(sprite.buildBuffer(childAnim));
+            }
+        }
+        await Promise.all(tasks);
+        for (const [animName, frames] of this._animationBuffer)
+            this._animationBounds.set(animName, computeBufferLocalBounds(frames));
+    }
+
+    /** Release every store resource not referenced by sprite and sub sprite. */
+    private _sweepStore(): void {
+        const bones = new Set<string>();
+        const skins = new Set<number>();
+        this.collectResourceKeys(bones, skins);
+        this.openGl.assetStore.sweep(bones, skins);
+    }
+
+    override collectResourceKeys(bones: Set<string>, skins: Set<number>): void {
+        super.collectResourceKeys(bones, skins);
+        for (const sprite of this._subEntitySprites.values()) sprite.collectResourceKeys(bones, skins);
+    }
+
+    /**
+     * Add/remove/update child sprites to match `newLook`.
+     * Returns the strongest change among children: Structural when a child was
+     * added/removed or changed bone, Soft when an existing child changed look.
+     */
+    private async _changeSubEntities(newLook: Look): Promise<LookChange> {
+        const desiredKeys = new Set<string>();
+        const tasks: Promise<unknown>[] = [];
+        let change: LookChange = LookChange.None;
+
+        for (const [category, subEntities] of newLook.subEntities) {
+            for (const [typeIndex, subLook] of subEntities) {
+                const key = DofusSprite.subEntityKey(category, typeIndex);
+                desiredKeys.add(key);
+                const existing = this._subEntitySprites.get(key);
+                if (existing) {
+                    tasks.push(existing.changeLook(subLook).then(c => { if (c > change) change = c; }));
+                } else {
+                    change = LookChange.Structural;
+                    tasks.push(this._ensureSubEntity(subLook, key).then(() => undefined));
+                }
+            }
+        }
+
+        for (const [key] of [...this._subEntitySprites]) {
+            if (desiredKeys.has(key)) continue;
+            change = LookChange.Structural;
+            this._subEntitySprites.delete(key);
+        }
+
+        await Promise.all(tasks);
+        this.look.subEntities = newLook.subEntities;
+        return change;
+    }
+
+
+    override getSubEntity(index: string): DofusSprite | undefined {
         return this._subEntitySprites.get(index);
+    }
+
+    private static subEntityKey(category: number, typeIndex: number): string {
+        return `carried_${category}_${typeIndex}`;
+    }
+
+    getSubEntitySprite(category: SubEntityCategory, typeIndex = 0): DofusSprite | undefined {
+        return this._subEntitySprites.get(DofusSprite.subEntityKey(category, typeIndex));
     }
 
     // ── Audio ─────────────────────────────────────────────────────────────────────
 
     /** Sound-bank key for the current animation (strip trailing direction index). */
-    AnimSoundName(animName:string): string {
+    AnimSoundName(animName: string): string {
         const idx = animName.lastIndexOf('_');
         const baseAnim = idx === -1 ? animName : animName.slice(0, idx);
         return this.look.bone === 1 ? `${this.data.m_Name}/${baseAnim}` : baseAnim;
@@ -307,6 +448,7 @@ export class DofusSprite extends AssetManager {
         const keys = this.currentSoundData();
         if (keys.length === 0) return [];
         const manager = await getAudioManager();
-        return manager.getSoundAnim(keys, this.data.defaultFrameRate);
+        const breedAndSex = await this.look.getBreedAndSex()
+        return manager.getSoundAnim(keys, this.data.defaultFrameRate, breedAndSex);
     }
 }

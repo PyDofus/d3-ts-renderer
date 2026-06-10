@@ -5,8 +5,8 @@ import {Output, BufferTarget, WebMOutputFormat, CanvasSource, AudioBufferSource,
 import { fourcc, readU16LE, readU24LE, readU32LE, writeFourCC, writeU16LE, writeU24LE, writeU32LE, concatBytes} from '../readers/binaryReader';
 
 
-export async function saveToPng(canvas: HTMLCanvasElement, filename = 'frame.png'): Promise<Blob> {
-    const blob = await encodeCurrentFrame(canvas, 'image/png');
+export async function saveToPng(canvas: HTMLCanvasElement, filename?:string): Promise<Blob> {
+    const blob = await encodeCurrentFrame(canvas);
     if (filename) downloadBlob(blob, filename);
     return blob;
 }
@@ -105,9 +105,14 @@ export async function saveToWebm(sprite: DofusSprite, options: SaveWebmBrowserOp
     const wantsAudio = options.audio !== false;
     if (isWebCodecsAvailable(wantsAudio)) {
         try {
-            return await saveToWebmWithWebCodecs(sprite, options);
+            return await saveToWebmWithWebCodecs(sprite, options, 'keep');
         } catch (err) {
-            console.warn('saveToWebm: WebCodecs path failed, falling back to MediaRecorder:', err);
+            console.warn('saveToWebm: WebCodecs alpha encode failed, retrying without alpha:', err);
+            try {
+                return await saveToWebmWithWebCodecs(sprite, options, 'discard');
+            } catch (err2) {
+                console.warn('saveToWebm: WebCodecs path failed, falling back to MediaRecorder:', err2);
+            }
         }
     }
     return saveToWebmWithMediaRecorder(sprite, options);
@@ -127,7 +132,7 @@ function isWebCodecsAvailable(includeAudio: boolean): boolean {
 /**
  * Record a sprite animation into a WebM Blob using mediabunny + WebCodecs.
  */
-async function saveToWebmWithWebCodecs(sprite: DofusSprite, options: SaveWebmBrowserOptions): Promise<Blob> {
+async function saveToWebmWithWebCodecs(sprite: DofusSprite, options: SaveWebmBrowserOptions, alphaMode: 'keep' | 'discard'): Promise<Blob> {
     const {animName, scale = 1, forcedSize, filename, audio = true, audioPlayer, videoBitsPerSecond, flip = false} = options;
     const frameCount = await sprite.prepareAnimation(animName, scale, true, flip, false, forcedSize);
     if (frameCount === 0) throw new Error(`Animation '${animName}' has no frames`);
@@ -136,7 +141,7 @@ async function saveToWebmWithWebCodecs(sprite: DofusSprite, options: SaveWebmBro
     const frameDurSec = 1 /  sprite.data.defaultFrameRate;
     const totalDurSec = frameCount * frameDurSec;
 
-    const videoSource = new CanvasSource(canvas, {codec: 'vp9', bitrate: videoBitsPerSecond ?? QUALITY_HIGH});
+    const videoSource = new CanvasSource(canvas, {codec: 'vp9', bitrate: videoBitsPerSecond ?? QUALITY_HIGH, alpha: alphaMode});
 
     const target = new BufferTarget();
     const output = new Output({format: new WebMOutputFormat(), target});
@@ -299,7 +304,7 @@ function flipYInPlace(pixels: Uint8ClampedArray, width: number , height: number)
     }
 }
 
-async function encodeCurrentFrame(canvas: HTMLCanvasElement, type: 'image/png' | 'image/webp', quality?: number): Promise<Blob> {
+export async function encodeCurrentFrame(canvas: HTMLCanvasElement): Promise<Blob> {
     const gl = getGl(canvas);
     const width = gl.drawingBufferWidth;
     const height = gl.drawingBufferHeight;
@@ -314,7 +319,7 @@ async function encodeCurrentFrame(canvas: HTMLCanvasElement, type: 'image/png' |
     if (!ctx2d) throw new Error('Failed to create 2D canvas context');
     ctx2d.putImageData(new ImageData(pixels, width, height), 0, 0);
     return new Promise((resolve, reject) => {
-        off.toBlob(b => b ? resolve(b) : reject(new Error(`toBlob(${type}) failed`)), type, quality);
+        off.toBlob(b => b ? resolve(b) : reject(new Error(`toBlob failed`)));
     });
 }
 

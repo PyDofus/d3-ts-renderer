@@ -1,4 +1,4 @@
-import {indexedColorsToDict, parseLookStringColor, rgbToInt, dictToIndexedColors , type RGB} from './colorUtilities';
+import {indexedColorsToDict, parseLookStringColor, rgbToInt, dictToIndexedColors, dictToMountColor, type RGB} from './colorUtilities';
 import {SubEntityCategory} from './enums';
 import type {BodyData} from "../data/types";
 import {getBodies} from "../data/body";
@@ -24,7 +24,7 @@ export class Look {
     subEntities: Map<number, Map<number, Look>>;
 
     private color: Map<number, RGB>;
-    private _flatColorArray?: Float32Array;
+    readonly flatColorArray = new Float32Array(48);
 
     private static readonly numberBaseDict: Readonly<Record<string, number>> = {A: 10, G: 16, Z: 36};
 
@@ -34,11 +34,12 @@ export class Look {
         this.color = color;
         this.size = size;
         this.subEntities = new Map<number, Map<number, Look>>();
+        this.writeFlat();
     }
 
     set Color(map: Map<number, RGB>) {
         this.color = new Map(map);
-        this._flatColorArray = undefined;
+        this.writeFlat();
     }
 
     get Color(): ReadonlyMap<number, RGB> {
@@ -47,23 +48,47 @@ export class Look {
 
     setColor(index: number, value: RGB) {
         this.color.set(index, value);
-        this._flatColorArray = undefined;
+        if (index < 0 || index >= 16) return;
+        this.flatColorArray[index * 3] = value[0];
+        this.flatColorArray[index * 3 + 1] = value[1];
+        this.flatColorArray[index * 3 + 2] = value[2];
     }
 
-    get flatColorArray(): Float32Array {
-        if (!this._flatColorArray) this._flatColorArray = this.computeFlat();
-        return this._flatColorArray;
-    }
-
-    private computeFlat(): Float32Array {
-        const flat = new Float32Array(48);
+    private writeFlat(): void {
         for (let i = 0; i < 16; i++) {
             const c = this.color.get(i) ?? [1, 1, 1];
-            flat[i * 3] = c[0];
-            flat[i * 3 + 1] = c[1];
-            flat[i * 3 + 2] = c[2];
+            this.flatColorArray[i * 3] = c[0];
+            this.flatColorArray[i * 3 + 1] = c[1];
+            this.flatColorArray[i * 3 + 2] = c[2];
         }
-        return flat;
+    }
+
+    getPetColor(indexedColors?: readonly number[]): Map<number, RGB> {
+        return new Map([...this.color, ...indexedColorsToDict(indexedColors)]);
+    }
+
+    getRideableColor(isMount: boolean, kramelehone: boolean, indexedColors?: readonly number[]): Map<number, RGB> {
+        const color = indexedColorsToDict(indexedColors);
+        if (isMount && !kramelehone) return color;
+        const riderColor = dictToMountColor(this.color);
+        return isMount ? new Map([...color, ...riderColor]) : new Map([...riderColor, ...color]);
+    }
+
+    get riderLook(): Look {
+        return this.subEntities.get(SubEntityCategory.MOUNT_DRIVER)?.get(0) ?? this;
+    }
+
+    get petLook(): Look | undefined {
+        return this.subEntities.get(SubEntityCategory.PET)?.get(0);
+    }
+
+    setSubEntity(category: SubEntityCategory, subLook:Look, index:number=0) {
+        let categoryEntities = this.subEntities.get(category);
+        if (!categoryEntities) {
+            categoryEntities = new Map();
+            this.subEntities.set(category, categoryEntities);
+        }
+        categoryEntities.set(index, subLook);
     }
 
     static fromString(lookString: string, numberBase = 10): Look {
@@ -156,6 +181,11 @@ export class Look {
         return bodies.skinMapping.get(this.skins[0]!)
     }
 
+    async getBreedAndSex(): Promise<number|undefined> {
+        const body = await this.getBody();
+        if (body) return 2 * body.breed + body.gender;
+    }
+
     toB16String():string{
         const encoder = new TextEncoder();
         const bytes = encoder.encode(this.toString());
@@ -184,6 +214,22 @@ export class Look {
         }
     }
 
+    /** Deep structural copy: exact colors, size, bone and sub-entity category/index keys preserved. */
+    clone(): Look {
+        const copy = new Look(
+            this.bone,
+            [...this.skins],
+            new Map(this.color),
+            this.size,
+        );
+        for (const [category, subMap] of this.subEntities) {
+            const catCopy = new Map<number, Look>();
+            for (const [index, sub] of subMap) catCopy.set(index, sub.clone());
+            copy.subEntities.set(category, catCopy);
+        }
+        return copy;
+    }
+
     toString(): string {
         const components: string[] = [
             this.bone ? String(this.bone) : '',
@@ -204,4 +250,10 @@ export class Look {
         return `{${components.join('|')}}`;
     }
 
+    sameSkins(otherLook: Look): boolean {
+        if (this.skins.length !== otherLook.skins.length) return false;
+        const skins = [...this.skins].sort((x, y) => x - y);
+        const otherSkins = [...otherLook.skins].sort((x, y) => x - y);
+        return skins.every((val, i) => val === otherSkins[i]);
+    }
 }
