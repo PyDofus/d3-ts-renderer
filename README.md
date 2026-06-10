@@ -16,7 +16,9 @@ npm install d3-ts-renderer
 ## Getting started
 
 The renderer needs to know where to fetch sprite assets. Call `configure()` once at startup before
-creating any sprite.
+creating any sprite. 
+
+A full working browser setup lives in[`example/index.html`](example/index.html).
 
 ### Browser
 
@@ -82,23 +84,58 @@ subpath and wire up your own `decodeImage` callback plus a duck-typed canvas —
 
 `SpritePlayback` drives a sprite on a `requestAnimationFrame` loop locked to
 the animation's native frame rate, and (optionally) schedules its sound events
-through Web Audio.
+through Web Audio. 
+It also owns the higher-level controls: direction switching, live look swapping, scale changes, and frame/clip capture.
 
 ```ts
-import { SpritePlayback } from 'd3-ts-renderer';
+import { SpritePlayback, Directions } from 'd3-ts-renderer';
 
 const playback = new SpritePlayback();
-await playback.play(sprite, 'AnimMarche_2', {
+await playback.play(sprite, {
+    animName: 'AnimMarche',          // base name; the direction is appended for you
+    direction: Directions.DOWN_RIGHT,
     scale: 2,
     audio: true,
+    startFrame: 0,
     onFrame: i => console.log('rendered frame', i),
 });
 
-// later
 playback.pause();
 playback.resume();
+playback.toggle();                   // pause/resume, returns the new paused state
+playback.toggleMute();               // mute/unmute, returns the new muted state
 playback.stop();
 ```
+
+`play(sprite, options)` resolves `animName` + `direction`, falling back to a static pose when the requested one is missing.
+You can also pass name with no `direction` (AnimMarche_2).
+
+### Changing direction, scale, and look without restarting
+
+`setDirection`, `setScale`, and the look-swapping helpers reuse the active
+sprite and resume from where they can:
+
+```ts
+await playback.setDirection(Directions.DOWN_LEFT);
+// resize + redraw the current frame in place
+playback.setScale(3);
+
+// mutate the sprite, re-fetching only the parts of the look that changed and resume from the same frame when the base animation is unchanged
+await playback.replaceLook(newLook);
+
+// reuse the active sprite if there is one, otherwise build a fresh one
+await playback.renderLook(newLook, () => DofusSprite.create(newLook, canvas));
+```
+
+### Capturing the playing sprite
+
+```ts
+await playback.capturePng('frame.png');     // current frame → PNG Blob
+await playback.captureWebp('walk.webp');     // whole animation → animated WebP
+await playback.captureWebm('walk.webm');     // whole animation → WebM (+ audio)
+```
+
+Each capture pauses the loop if it was playing, snapshots, then resumes.
 
 ## Exporting frames and animations
 
@@ -155,7 +192,7 @@ const sprite = await DofusSprite.create(look, canvas, { isMapAnimation: true });
 ```
 
 ## WebGL1 / WebGL2
-[index.html](example/index.html)
+
 `RendererContext` prefers WebGL2 and falls back to WebGL1 + extensions when it
 isn't available:
 
@@ -328,9 +365,6 @@ comment above each string tells the IDE which injection to apply.
 
 Not prioritized:
 - **Flash filters** — parsed from data but not applied at render time
-- **Partial-data API** — fetch individual body / skinslot entries instead of the full JSON
 - **snap shader**
-- **webm export** - saveToWebmWithMediaRecorder add [fix webm duration](https://github.com/yusitnikov/fix-webm-duration) or something similar to debug webm missing duration + seek.
-  (saveToWebmWithMediaRecorder is only use when webcodec isn't supported)
 - **live extract** - add audio support
-- **audio** - find a way to also extract fmod parameter, especially player/avatar/bark parameters
+- *texture** add texture format: Desktop WebGL2 → BC7, Desktop WebGL1 → BC3, Mobile → ASTC, Old/unknown → webp
