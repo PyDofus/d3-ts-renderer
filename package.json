@@ -28,7 +28,9 @@
     "liveExtract": "uv run fastapi run"
   },
   "devDependencies": {
+    "@types/gl": "^6.0.5",
     "@types/node": "^25.6.0",
+    "@types/sharp": "^0.31.1",
     "tsup": "^8.5.1",
     "tsx": "^4.21.0",
     "typescript": "^6.0.3",
