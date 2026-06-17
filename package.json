@@ -20,6 +20,7 @@
     }
   },
   "scripts": {
+    "prepare": "npm run build",
     "dev": "vite -c example/vite.config.ts",
     "typecheck": "tsc --noEmit",
     "build": "tsup",
