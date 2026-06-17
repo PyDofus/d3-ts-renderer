@@ -209,7 +209,7 @@ export abstract class AssetManager {
         while (i < elements.length) {
             const key:number|undefined =  (elements[i] as any)?.vertexes?.mask;
             let j = i + 1;
-            while (j < elements.length && (elements[i] as any)?.vertexes?.mask === key) j++;
+            while (j < elements.length && (elements[j] as any)?.vertexes?.mask === key) j++;
             groups.push(elements.slice(i, j) as NodeElementGroup);
             i = j;
         }
