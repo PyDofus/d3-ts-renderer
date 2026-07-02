@@ -5,7 +5,7 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
-    "pydofus3 @ git+ssh://git@github.com/PyDofus/pydofus3.git",
+    "pydofus3 @ git+https://git@github.com/PyDofus/pydofus3.git",
 ]
 
 [tool.fastapi]

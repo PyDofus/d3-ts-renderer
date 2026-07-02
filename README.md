@@ -263,14 +263,14 @@ powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | ie
 Install the CLI globally:
 
 ```bash
-uv tool install git+ssh://git@github.com/PyDofus/pydofus3.git
+uv tool install git+https://git@github.com/PyDofus/pydofus3.git
 ```
 
 Or with the optional `fpng` extra to speed up PNG export (see the fpng section
 of the pydofus3 README for the C++ toolchain requirements):
 
 ```bash
-uv tool install "git+ssh://git@github.com/PyDofus/pydofus3.git[fpng]"
+uv tool install "git+https://git@github.com/PyDofus/pydofus3.git[fpng]"
 ```
 
 Always reuse the same `OUTPUT_PATH` for every command — pydofus3 writes each
