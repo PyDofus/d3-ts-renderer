@@ -10,7 +10,7 @@ web apps. It also runs headless under Node for batch image/animation export.
 ## Installation
 
 ```bash
-npm install d3-ts-renderer
+npm install git+https://github.com/PyDofus/d3-ts-renderer.git#main
 ```
 
 ## Getting started
@@ -46,7 +46,7 @@ are declared as optional peer dependencies, so browser consumers won't pull
 them in:
 
 ```bash
-npm install d3-ts-renderer gl sharp
+npm install git+https://github.com/PyDofus/d3-ts-renderer.git#main gl sharp
 ```
 
 The `d3-ts-renderer/node` subpath bundles ready-made helpers for the three
