@@ -1,6 +1,6 @@
 {
   "name": "d3-ts-renderer",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "type": "module",
   "sideEffects": false,
   "files": [
@@ -20,6 +20,7 @@
     }
   },
   "scripts": {
+    "generate-fbs": "flatc --ts -o src/data/fbs/generated fbs/skin.fbs fbs/bone.fbs fbs/common.fbs",
     "prepare": "npm run build",
     "dev": "vite -c example/vite.config.ts",
     "typecheck": "tsc --noEmit",

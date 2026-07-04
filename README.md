@@ -341,7 +341,7 @@ is **not** supported in this mode.
 
 These projects use the lib — contact me to be added to the list.
 
-- [skin.souff.fr](https://skin.souff.fr) — Skin Builder
+- [skin.souff.fr](https://skin.souff.fr) - Skin Builder
 - [E-bou](https://e-bou.fr/) - Discord Bot
 - [Dofus Book](https://www.dofusbook.net/fr/) - stuff Builder
 
