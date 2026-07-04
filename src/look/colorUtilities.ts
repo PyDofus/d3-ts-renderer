@@ -25,6 +25,10 @@ export function dictToIndexedColors(colorDict: Map<number, RGB>): number[] {
   return result;
 }
 
+export function arrayColorsToDict(arrayColors: number[]): Map<number, RGB> {
+    return new Map(arrayColors.map((c, index) => [index + 1, intToRgb(c)]));
+}
+
 const RIDER_MOUNT_INDICES = [3, 4, 5, 6] as const;
 
 export function dictToMountColor(colorDict: Map<number, RGB>): Map<number, RGB> {

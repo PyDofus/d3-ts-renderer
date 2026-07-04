@@ -1,8 +1,17 @@
-import {indexedColorsToDict, parseLookStringColor, rgbToInt, dictToIndexedColors, dictToMountColor, type RGB} from './colorUtilities';
+import {
+    arrayColorsToDict,
+    dictToIndexedColors,
+    dictToMountColor,
+    indexedColorsToDict,
+    parseLookStringColor,
+    type RGB,
+    rgbToInt
+} from './colorUtilities';
 import {SubEntityCategory} from './enums';
 import type {BodyData} from "../data/types";
 import {getBodies} from "../data/body";
 import {getEnumKeyByValue} from "../utilities";
+import {getBreeds} from "../data/breed";
 
 export interface LookDict {
     bonesId: number;
@@ -82,7 +91,7 @@ export class Look {
         return this.subEntities.get(SubEntityCategory.PET)?.get(0);
     }
 
-    setSubEntity(category: SubEntityCategory, subLook:Look, index:number=0) {
+    setSubEntity(category: SubEntityCategory, subLook: Look, index: number = 0) {
         let categoryEntities = this.subEntities.get(category);
         if (!categoryEntities) {
             categoryEntities = new Map();
@@ -139,6 +148,12 @@ export class Look {
         return look;
     }
 
+    static async fromStringAsync(lookString: string, injectColor: boolean = false, numberBase = 10): Promise<Look> {
+        const look = Look.fromString(lookString, numberBase)
+        if (injectColor) await look.injectColor()
+        return look
+    }
+
     static fromDict(lookDict: LookDict): Look {
         const look = new Look(
             lookDict.bonesId,
@@ -175,18 +190,53 @@ export class Look {
         return found ? found[0]! : conditionalLook[0]![0]!;
     }
 
+    static parseConditionalLooks(lookString: string): Array<{ look: string; index: number; condition: string }> {
+        return lookString
+            .split(',{')
+            .map(s => {
+                const clean = s.endsWith('}') ? s.slice(0, -1) : s
+                const looks = clean.startsWith('{') ? clean : '{' + clean
+                const [look, conditions] = looks.split('$');
+                const parts = conditions!.split(';');
+                return {look: `${look}}`, index: Number(parts[0]), condition: parts[parts.length - 1]!};
+            });
+    }
+
+    async injectColor(): Promise<void> {
+        if (this.color.size < 6) {
+            const body = await this.getBody();
+            if (body) {
+                const breeds = await getBreeds()
+                const breed = breeds.data.get(body.breed)
+                if (breed) {
+                    const colors = (body.gender == 1) ? breed.femaleColors : breed.maleColors;
+                    const colorsMap = arrayColorsToDict(colors);
+                    for (const [index, color] of colorsMap) {
+                        if (!this.color.has(index)) this.setColor(index, color);
+                    }
+                }
+            }
+        }
+
+        for (const subEntityMap of this.subEntities.values()) {
+            for (const subEntity of subEntityMap.values()) {
+                await subEntity.injectColor()
+            }
+        }
+    }
+
     async getBody(): Promise<BodyData | undefined> {
         if (this.skins.length == 0) return undefined
         const bodies = await getBodies();
         return bodies.skinMapping.get(this.skins[0]!)
     }
 
-    async getBreedAndSex(): Promise<number|undefined> {
+    async getBreedAndSex(): Promise<number | undefined> {
         const body = await this.getBody();
         if (body) return 2 * body.breed + body.gender;
     }
 
-    toB16String():string{
+    toB16String(): string {
         const encoder = new TextEncoder();
         const bytes = encoder.encode(this.toString());
         const hexArray = new Array(bytes.length);
@@ -196,17 +246,18 @@ export class Look {
         return hexArray.join('');
     }
 
-    toDict():LookDict {
-          const subEntities: SubEntityLookDict[] = [];
-          for (const [category, subEntityMap] of this.subEntities) {
+    toDict(): LookDict {
+        const subEntities: SubEntityLookDict[] = [];
+        for (const [category, subEntityMap] of this.subEntities) {
             for (const subEntity of subEntityMap.values())
-              subEntities.push({
-                  bindingPointCategory: getEnumKeyByValue(SubEntityCategory, category as SubEntityCategory) ?? 'UNUSED' ,
-                  subEntityLook: subEntity.toDict()})
-          }
+                subEntities.push({
+                    bindingPointCategory: getEnumKeyByValue(SubEntityCategory, category as SubEntityCategory) ?? 'UNUSED',
+                    subEntityLook: subEntity.toDict()
+                })
+        }
 
         return {
-            bonesId:this.bone,
+            bonesId: this.bone,
             skins: this.skins,
             scales: [Math.floor(this.size * 100)],
             indexedColors: dictToIndexedColors(this.color),
@@ -238,13 +289,13 @@ export class Look {
             String(Math.floor(this.size * 100))];
 
         if (this.subEntities) {
-          const subEntities: string[] = [];
-          for (const [category, subEntityDict] of this.subEntities) {
-            for (const [index, subEntity] of subEntityDict) {
-              subEntities.push(`${category}@${index}=${subEntity.toString()}`);
+            const subEntities: string[] = [];
+            for (const [category, subEntityDict] of this.subEntities) {
+                for (const [index, subEntity] of subEntityDict) {
+                    subEntities.push(`${category}@${index}=${subEntity.toString()}`);
+                }
             }
-          }
-          components.push(subEntities.join(''));
+            components.push(subEntities.join(''));
         }
 
         return `{${components.join('|')}}`;

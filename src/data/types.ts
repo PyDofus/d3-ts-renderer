@@ -132,6 +132,37 @@ export interface BodyData {
     nameId: I18n;
 }
 
+export interface BreedsData  {
+    id: number;
+    shortNameId: I18n;
+    descriptionId: I18n;
+    gameplayDescriptionId: I18n;
+    maleLook: string;
+    femaleLook: string;
+    creatureBonesId: number;
+    statsPointsForStrength: Array<WrappedListInt>;
+    statsPointsForIntelligence: Array<WrappedListInt>;
+    statsPointsForChance: Array<WrappedListInt>;
+    statsPointsForAgility: Array<WrappedListInt>;
+    statsPointsForVitality: Array<WrappedListInt>;
+    statsPointsForWisdom: Array<WrappedListInt>;
+    breedSpellsId: Array<number>;
+    breedRoles: Array<BreedRoleByBreedData>;
+    maleColors: Array<number>;
+    femaleColors: Array<number>;
+    complexity: number;
+    sortIndex: number;
+}
+
+export type WrappedListInt = Array<number>;
+
+export interface BreedRoleByBreedData {
+    roleId: number;
+    descriptionId: I18n;
+    value: number;
+    order: number;
+}
+
 export enum SkinSlotRuleType {
     Default = 0,
     Breed = 1,

@@ -1,7 +1,7 @@
 import type {
     AnimatedObjectDefinition, AudioManagerLibrary,
     BodyData,
-    BoneBundle,
+    BoneBundle, BreedsData,
     FmodEvent,
     MetadataRoot,
     SkinAsset,
@@ -36,10 +36,12 @@ const enum StreamingAssets {
 const enum BundleFile {
     SkinSlot = "skinslotsrulesdataroot",
     Body = "bodiesdataroot",
+    Breed = "breedsdataroot",
     SoundBone = "soundbonesdataroot",
     audioLib = "Assets/Configuration/Audio/AudioManagerLibrary.asset",
     processedAudioLib = "audio_manager.json",
-    changeTable = "Content/Characters/table.json"
+    changeTable = "Content/Characters/table.json",
+    version= "version.json"
 }
 
 export interface DataConfig {
@@ -108,6 +110,10 @@ export abstract class DataLoader {
         return this.data(BundleFile.Body);
     }
 
+    async loadBreeds(): Promise<Record<string, BreedsData>> {
+        return this.data(BundleFile.Breed);
+    }
+
     async loadSkinSlots(): Promise<Record<string, SkinSlotRuleData>> {
         return this.data(BundleFile.SkinSlot)
     }
@@ -135,10 +141,15 @@ export abstract class DataLoader {
 
 class UrlLoader extends DataLoader {
     private cacheTable: Record<"Bones"|"Skins", Map<string, number>>;
+    private buildTime: number = 0;
+
     constructor(basePath: string, imgExtension:string="png" , decodeImage?: ImageDecoder) {
         super(basePath, imgExtension, decodeImage);
         this.cacheTable = {Bones: new Map(), Skins: new Map()};
-        if (typeof window !== "undefined") void this.setCache();
+        if (typeof window !== "undefined") {
+            void this.setCache();
+            void this.setBuildTime();
+        }
 
     }
 
@@ -152,6 +163,19 @@ class UrlLoader extends DataLoader {
         } catch (e) {}
     }
 
+    private async setBuildTime(): Promise<void> {
+        try {
+            const data = await this.json<{ BuildDate?: number }>(`${BundleFile.version}?t=${Date.now()}`);
+            this.buildTime = data?.BuildDate ?? 0;
+        } catch (e) {}
+    }
+
+    private withBuildTime(path: string): string {
+        if (!this.buildTime || path.includes('?t=')) return path;
+        const sep = path.includes('?') ? '&' : '?';
+        return `${path}${sep}t=${this.buildTime}`;
+    }
+
     protected async fetchRes(path: string): Promise<Response> {
         const res = await fetch(this._base + path);
         if (!res.ok) throw new Error(`HTTP ${res.status} fetching ${path}`);
@@ -159,7 +183,7 @@ class UrlLoader extends DataLoader {
     }
 
     protected async json<T>(path: string): Promise<T> {
-        return (await this.fetchRes(path)).json();
+        return (await this.fetchRes(this.withBuildTime(path))).json();
     }
 
     protected async binary(path: string): Promise<ArrayBuffer> {
@@ -208,7 +232,7 @@ class UrlLoader extends DataLoader {
     }
 
     async loadBone(boneName: string, isMapAnimation?: boolean): Promise<BoneBundle> {
-        const timestamp = this.cacheTable.Bones.get(boneName) ?? 0
+        const timestamp = this.cacheTable.Bones.get(boneName.toLowerCase()) ?? 0
         const folder = `${isMapAnimation? StreamingAssets.Animations: StreamingAssets.Bones}/${boneName}`
         const skinPromise = this.loadSkinWithCache(folder, timestamp);
         const bonePromise = this.json<AnimatedObjectDefinition>(`${folder}/bone.json?t=${timestamp}`);
