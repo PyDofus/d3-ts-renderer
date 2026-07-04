@@ -341,11 +341,13 @@ is **not** supported in this mode.
 
 These projects use the lib — contact me to be added to the list.
 
-- [skin.souff.fr](https://skin.souff.fr) — skinator (not on the lib yet, migration in progress)
+- [skin.souff.fr](https://skin.souff.fr) — Skin Builder
+- [E-bou](https://e-bou.fr/) - Discord Bot
+- [Dofus Book](https://www.dofusbook.net/fr/) - stuff Builder
 
 ## Usage
 
-Please don’t use this library to create another “skinator,” or to power Dofus fan sites that lock features behind a paywall.
+Please don’t use this library to create another “skinator” or to power Dofus fan sites that lock features behind a paywall.
 
 Aside from those two restrictions, use it however you want.
 
