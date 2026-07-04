@@ -64,7 +64,7 @@ export function getRelatedChildAnim(animations: string[], animParent: string): [
             if (found2) return [found2, true];
         }
     }
-
+    if (animations.length > 0) return [animations[0]!, false];
     return [undefined, false];
 }
 
