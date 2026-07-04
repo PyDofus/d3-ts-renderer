@@ -160,8 +160,7 @@ export class DofusSprite extends AssetManager {
             const stateIter = animMeta.iterRenderStates();
             for (const node of stateIter) {
                 const [found, skinPart, isCustomised] = this.getSkinAssetPart(node);
-                if (!found) continue
-                if (skinPart !== null) {
+                if (skinPart !== null && found) {
                     const part = this.processPart(skinPart);
                     buf.appendNode(part, frameNumber, node, scaleMatrix, this.look.flatColorArray);
                 }

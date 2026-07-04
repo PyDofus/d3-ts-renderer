@@ -200,7 +200,7 @@ export abstract class AssetManager {
     }
 
     private _iterEntry(assetPart: SkinAssetPart): NodeElementGroup[] {
-        const elements = this._walk(assetPart, null, false);
+        const elements = this._walk(assetPart, null);
         // Group NodeElementSprite and NodeElementData by mask (like Python groupby)
         // This avoids repeated mask checks and stencil update in _renderNode.
         // Not sure if this is idiomatic in TypeScript.
@@ -216,7 +216,7 @@ export abstract class AssetManager {
         return groups;
     }
 
-    private _walk(part: SkinAssetPart, transformation: Mat3 | null, assetEqualityCheck: boolean = true): Array<NodeElementData | NodeElementSprite> {
+    private _walk(part: SkinAssetPart, transformation: Mat3 | null): Array<NodeElementData | NodeElementSprite> {
         const result: Array<NodeElementData | NodeElementSprite> = [];
         let index = 0;
         let drawIndex = 0;
@@ -252,7 +252,7 @@ export abstract class AssetManager {
             }
 
             if (newPart instanceof SkinAssetPart) {
-                if (assetEqualityCheck && newPart.source === part.source) {
+                if (newPart.source === part.source) {
                     index++;
                     continue;
                 }
