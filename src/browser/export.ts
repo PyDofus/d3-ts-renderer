@@ -34,7 +34,8 @@ export interface SaveWebpBrowserOptions {
 export async function saveToWebp(sprite: DofusSprite, options: SaveWebpBrowserOptions): Promise<Blob> {
     const { animName, scale = 1, forcedSize, filename, quality = 0.9, loop = 0, concurrency = 4, flip=false } = options;
 
-    const frameCount = await sprite.prepareAnimation(animName, scale, true, flip, false, forcedSize);
+    await sprite.prepareAnimation(animName, scale, true, flip, false, forcedSize);
+    const frameCount = await sprite.getMaxFrame(animName);
     if (frameCount === 0) throw new Error(`Animation '${animName}' has no frames`);
 
     const canvas = sprite.openGl.gl.canvas as HTMLCanvasElement;
@@ -134,7 +135,8 @@ function isWebCodecsAvailable(includeAudio: boolean): boolean {
  */
 async function saveToWebmWithWebCodecs(sprite: DofusSprite, options: SaveWebmBrowserOptions, alphaMode: 'keep' | 'discard'): Promise<Blob> {
     const {animName, scale = 1, forcedSize, filename, audio = true, audioPlayer, videoBitsPerSecond, flip = false} = options;
-    const frameCount = await sprite.prepareAnimation(animName, scale, true, flip, false, forcedSize);
+    await sprite.prepareAnimation(animName, scale, true, flip, false, forcedSize);
+    const frameCount = await sprite.getMaxFrame(animName);
     if (frameCount === 0) throw new Error(`Animation '${animName}' has no frames`);
 
     const canvas = sprite.openGl.gl.canvas as HTMLCanvasElement;
@@ -203,7 +205,8 @@ async function mixSoundEventsToAudioBuffer(events: SoundEvent[], buffers: Readon
 async function saveToWebmWithMediaRecorder(sprite: DofusSprite, options: SaveWebmBrowserOptions): Promise<Blob> {
     const { animName, scale = 1, forcedSize, filename, audio = true, audioPlayer, videoBitsPerSecond, flip=false} = options;
 
-    const frameCount = await sprite.prepareAnimation(animName, scale, true, flip, false, forcedSize);
+    await sprite.prepareAnimation(animName, scale, true, flip, false, forcedSize);
+    const frameCount = await sprite.getMaxFrame(animName);
     if (frameCount === 0) throw new Error(`Animation '${animName}' has no frames`);
 
     const canvas = sprite.openGl.gl.canvas as HTMLCanvasElement;
