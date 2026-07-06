@@ -8,6 +8,6 @@ const config: DataConfig = {strategy: 'url', basePath: 'https://cdn.example.com/
 configure(config);
 const canvas = createCanvas();
 const sprite = await DofusSprite.create(Look.fromString('{1|120,2195,3042,3069,3963|1=16777215,2=15335424,3=15335424,4=16777215,5=0,6=15335424|56}'), canvas, {numberFrame:1});
-await sprite.prepareAnimation('AnimStatiqueExplo0_1', 4, true);
+await sprite.prepareAnimation('AnimStatiqueExplo0_1', 4, true, false, true); //  flipY to get image in the correct orientation
 sprite.renderFrame(0);
 await saveToPng(canvas, 'test.png');
