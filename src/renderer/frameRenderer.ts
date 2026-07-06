@@ -39,8 +39,14 @@ export class FrameRenderer {
     setRenderSize(scale: number, bounds: Rectf | null, localBounds: Bounds2D, compute = false, forcedSize?: number, flipX :boolean = false, flipY: boolean=false): void {
         let [w, h, ox, oy] = this.getAnimationSize(bounds, localBounds, compute);
         if (forcedSize) {
-            const minDim = Math.min(w, h);
-            if (minDim > 0) scale *= forcedSize / minDim;
+            const maxDim = Math.max(w, h);
+            if (maxDim > 0) {
+                scale *= forcedSize / maxDim;
+                ox -= (maxDim - w) / 2;
+                oy -= (maxDim - h) / 2;
+                w = maxDim;
+                h = maxDim;
+            }
         }
         this._openGl.setBound(w, h, ox, oy, scale, flipX, flipY);
     }
