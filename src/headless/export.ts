@@ -5,7 +5,7 @@ import type { ImageDecoder } from '../data/loader';
 import { getLoader } from '../data/loader';
 import type { DofusSprite } from '../renderer/dofusSprite';
 import {FORMATS} from "./ffmpeg";
-import type {ExportFormat} from "./ffmpeg"
+import type {ExportFormat, HwAccel} from "./ffmpeg"
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
@@ -59,6 +59,15 @@ export interface SaveAnimationOptions {
     forcedSize?: number;
     /** Mix sprite sound events into the output when the target format supports audio. Defaults to true. */
     audio?: boolean;
+    /**
+     * Hardware video-encoder backend. 'none' (default) keeps the existing
+     * CPU encoders (libx264/libvpx/libwebp/gif) — fully backward compatible.
+     * Formats/extensions with no viable GPU encoder (webm/webp/gif) silently
+     * ignore this and stay on CPU; only 'mp4' currently has GPU profiles.
+     */
+    hwaccel?: HwAccel;
+    /** VAAPI render node device, only used when hwaccel === 'vaapi'. */
+    vaapiDevice?: string;
 }
 
 function writeAndDrain(stream: NodeJS.WritableStream, buf: Buffer): Promise<void> {
@@ -100,6 +109,10 @@ export async function saveAnimation(sprite: DofusSprite, options: SaveAnimationO
     const extension = options.extension ?? "webp"
     if (!(extension in FORMATS)) throw new Error(`Unsupported export format: ${extension}`);
     const format = FORMATS[extension];
+    const hwaccel = options.hwaccel ?? 'none';
+    const gpuProfile = hwaccel !== 'none' ? format.gpu?.[hwaccel] : undefined;
+    const videoCodec = gpuProfile?.videoCodec ?? format.videoCodec;
+    const videoArgs = gpuProfile?.videoArgs ?? format.videoArgs;
     const { animName, scale = 1, computeBounds = true, flipX = false, forcedSize, audio = true } = options;
     const fileName = `${animName}.${extension}`
     const output = options.outputFolder ? path.join(options.outputFolder, fileName) : fileName;
@@ -118,6 +131,7 @@ export async function saveAnimation(sprite: DofusSprite, options: SaveAnimationO
 
     const args: string[] = [
         '-y', '-hide_banner', '-loglevel', 'error',
+        ...(hwaccel === 'vaapi' && gpuProfile ? ['-vaapi_device', options.vaapiDevice ?? '/dev/dri/renderD128'] : []),
         '-thread_queue_size', '1024',
         '-f', 'rawvideo',
         '-pix_fmt', 'rgba',
@@ -130,7 +144,8 @@ export async function saveAnimation(sprite: DofusSprite, options: SaveAnimationO
     }
 
     // H264/yuv420p needs even dims.
-    const videoFilter = format.requiresEvenDims ? 'pad=ceil(iw/2)*2:ceil(ih/2)*2' : '';
+    const padFilter = format.requiresEvenDims ? 'pad=ceil(iw/2)*2:ceil(ih/2)*2' : '';
+    const videoFilter = [padFilter, ...(gpuProfile?.extraFilters ?? [])].filter(Boolean).join(',');
 
     if (audioInputs.length > 0) {
         const filters: string[] = [`[0:v]${videoFilter || 'null'}[vout]`];
@@ -149,8 +164,8 @@ export async function saveAnimation(sprite: DofusSprite, options: SaveAnimationO
         args.push('-map', '0:v');
     }
 
-    args.push('-c:v', format.videoCodec);
-    args.push(...format.videoArgs);
+    args.push('-c:v', videoCodec);
+    args.push(...videoArgs);
     args.push(output);
 
     const stdio: Array<'pipe' | 'ignore'> = ['pipe', 'ignore', 'pipe'];
