@@ -81,8 +81,8 @@ export abstract class DataLoader {
         return raw.objectsById;
     }
 
-    protected images(folder: string, textures: Array<{ m_PathID: string }>): Promise<TextureSource[]> {
-        return Promise.all(textures.map(t => this.image(`${folder}/${t.m_PathID}.${this._imgExtension}`)));
+    protected images(folder: string, textures: unknown[]): Promise<TextureSource[]> {
+        return Promise.all(textures.map((_, i) => this.image(`${folder}/${i}.${this._imgExtension}`)));
     }
 
     protected async loadSkinInternal(path: string): Promise<SkinBundle> {
