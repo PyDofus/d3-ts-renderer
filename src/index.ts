@@ -6,7 +6,7 @@ export {intToRgb, rgbToInt, indexedColorsToDict, mergeIndexedColors, indexedColo
 export {Directions, oppositeDirection} from './data/directions';
 export {getAnimName, directionsByAnim} from './data/animation';
 
-export {configure, getLoader, createDataLoader} from './data/loader';
+export {configure, getLoader, createDataLoader, HttpError} from './data/loader';
 export type {DataLoader, DataConfig, ImageDecoder} from './data/loader';
 export type {TextureSource, RawImageData} from './data/types';
 

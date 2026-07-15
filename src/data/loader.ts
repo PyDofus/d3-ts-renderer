@@ -51,6 +51,15 @@ export interface DataConfig {
     ImageExtension?: 'png'|'webp';
 }
 
+export class HttpError extends Error {
+    readonly status: number;
+
+    constructor(status: number, path: string) {
+        super(`HTTP ${status} fetching ${path}`);
+        this.status = status;
+    }
+}
+
 
 export abstract class DataLoader {
     protected readonly _base: string;
@@ -142,13 +151,13 @@ export abstract class DataLoader {
 class UrlLoader extends DataLoader {
     private cacheTable: Record<"Bones"|"Skins", Map<string, number>>;
     private buildTime: number = 0;
+    private tablesReady: Promise<void> = Promise.resolve();
 
     constructor(basePath: string, imgExtension:string="png" , decodeImage?: ImageDecoder) {
         super(basePath, imgExtension, decodeImage);
         this.cacheTable = {Bones: new Map(), Skins: new Map()};
         if (typeof window !== "undefined") {
-            void this.setCache();
-            void this.setBuildTime();
+            this.tablesReady = Promise.all([this.setCache(), this.setBuildTime()]).then(() => {});
         }
 
     }
@@ -177,9 +186,20 @@ class UrlLoader extends DataLoader {
     }
 
     protected async fetchRes(path: string): Promise<Response> {
-        const res = await fetch(this._base + path);
-        if (!res.ok) throw new Error(`HTTP ${res.status} fetching ${path}`);
-        return res;
+        const attempts = 3;
+        for (let attempt = 1; ; attempt++) {
+            let res: Response | undefined;
+            try {
+                res = await fetch(this._base + path, {signal: AbortSignal.timeout(30_000)});
+            } catch (err) {
+                if (attempt >= attempts) throw err;
+            }
+            if (res) {
+                if (res.ok) return res;
+                if (res.status === 404 || attempt >= attempts) throw new HttpError(res.status, path);
+            }
+            await new Promise(resolve => setTimeout(resolve, 500 * attempt));
+        }
     }
 
     protected async json<T>(path: string): Promise<T> {
@@ -222,16 +242,19 @@ class UrlLoader extends DataLoader {
     }
 
     async loadAnimationData(boneName: string, animName: string, isMapAnimation?: boolean): Promise<ArrayBuffer> {
-        const timestamp = this.cacheTable.Bones.get(boneName) ?? 0
+        await this.tablesReady;
+        const timestamp = this.cacheTable.Bones.get(boneName.toLowerCase()) ?? 0
         return this.binary(`${isMapAnimation? StreamingAssets.Animations: StreamingAssets.Bones}/${boneName}/${animName}.dat?t=${timestamp}`);
     }
 
     async loadSkin(skinId: number): Promise<SkinBundle> {
+        await this.tablesReady;
         const timestamp = this.cacheTable.Skins.get(String(skinId)) ?? 0
         return this.loadSkinWithCache(`${StreamingAssets.Skins}/${skinId}`, timestamp);
     }
 
     async loadBone(boneName: string, isMapAnimation?: boolean): Promise<BoneBundle> {
+        await this.tablesReady;
         const timestamp = this.cacheTable.Bones.get(boneName.toLowerCase()) ?? 0
         const folder = `${isMapAnimation? StreamingAssets.Animations: StreamingAssets.Bones}/${boneName}`
         const skinPromise = this.loadSkinWithCache(folder, timestamp);

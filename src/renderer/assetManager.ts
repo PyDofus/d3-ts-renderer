@@ -13,6 +13,12 @@ import type {RendererContext} from './rendererContext';
 import {type SkinResource} from './assetStore';
 import type {DofusSprite} from './dofusSprite';
 import {getSkinSlots} from "../data/skinSlots";
+import {HttpError} from '../data/loader';
+
+/** Missing skins (404) are simply not rendered; anything else (network failure, 5xx) must surface. */
+function skipMissingSkin(err: unknown): void {
+    if (!(err instanceof HttpError && err.status === 404)) throw err;
+}
 
 type CustomPart = SkinAssetPart | NodeElementSprite | null;
 type AssetPartResult = [found: boolean, part: CustomPart, isCustomised: boolean];
@@ -70,7 +76,9 @@ export abstract class AssetManager {
                     const r = await this.openGl.assetStore.skin(skinId);
                     this._setSkinOffset(skinId, r);
                     results.set(skinId, r.skin);
-                } catch {}
+                } catch (err) {
+                    skipMissingSkin(err);
+                }
             }),
         );
         for (const skinId of this.look.skins) {
@@ -298,7 +306,9 @@ export abstract class AssetManager {
                 const r = await this.openGl.assetStore.skin(id);
                 this._setSkinOffset(id, r);
                 this._skinsDict.set(id, r.skin);
-            } catch {}
+            } catch (err) {
+                skipMissingSkin(err);
+            }
         }));
 
         const ordered = new Map<number, SkinAsset>();

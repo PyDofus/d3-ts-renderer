@@ -26,6 +26,8 @@ export class SpritePlayback {
     private _tick: ((time: number) => void) | null = null;
     private _paused = false;
     private _generation = 0;
+    private _lookQueue: Promise<unknown> = Promise.resolve();
+    private _lookTicket = 0;
 
     private _sprite: DofusSprite | null = null;
     private _baseAnimName: string | undefined;
@@ -164,7 +166,15 @@ export class SpritePlayback {
         factory: () => Promise<DofusSprite>,
         options: SpritePlayOptions & {boneName?: string} = {},
     ): Promise<DofusSprite> {
-        return this._sprite ? this.replaceLook(newLook, options) : this.replace(factory, options);
+        const ticket = ++this._lookTicket;
+        const prev = this._lookQueue;
+        const task = (async () => {
+            await prev;
+            if (ticket !== this._lookTicket && this._sprite) return this._sprite;
+            return this._sprite ? this.replaceLook(newLook, options) : this.replace(factory, options);
+        })();
+        this._lookQueue = task.then(() => undefined, () => undefined);
+        return task;
     }
 
     async setDirection(direction: Directions, onFrame?: (frameIndex: number) => void): Promise<number> {
