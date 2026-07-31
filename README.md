@@ -95,7 +95,7 @@ await playback.play(sprite, {
     animName: 'AnimMarche',          // base name; the direction is appended for you
     direction: Directions.DOWN_RIGHT,
     scale: 2,
-    audio: true,
+    audio: true,                     // needs `enableAudio: true` in configure()
     startFrame: 0,
     onFrame: i => console.log('rendered frame', i),
 });
@@ -161,7 +161,7 @@ await saveAnimation(sprite, {
     extension: 'mp4',          // 'webm' | 'mp4' | 'webp' | 'gif' — default 'webp'
     outputFolder: 'out',
     scale: 2,
-    audio: true,              
+    audio: true,               // needs `enableAudio: true` in configure()
 });
 ```
 
@@ -221,10 +221,35 @@ both contexts.
 Config accepts a `decodeImage: (bytes, path) => TextureSource` hook for Node
 runtimes where `createImageBitmap` isn't available.
 
-The `url` loader looks for an optional `Content/Characters/table.json`
-manifest at startup and uses it to append cache-busting `?t=` query strings to
-bone/skin/audio asset URLs (so a CDN can serve them with long max-age headers
-and still invalidate per asset).
+### Optional features
+
+Three optional data sources are **off by default** — a minimal asset dump
+(bones, skins, datacenter data) is enough to render. Turn them on individually:
+
+| option            | default | what it enables                                                                                                                                       |
+|-------------------|---------|-------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `enableVersion`   | `false` | loads `version.json` at startup and appends a global `?t=<BuildDate>` cache-buster to JSON requests                                                    |
+| `enableCharacterTable` | `false` | loads `Content/Characters/table.json` and appends a per-asset `?t=<version>` cache-buster to bone/skin/animation URLs                                  |
+| `enableAudio`     | `false` | loads the audio library (`Content/Audio/.../audio_manager.json`, falling back to `AudioManagerLibrary.asset`) so sound events can be resolved          |
+
+```ts
+configure({
+    strategy: 'url',
+    basePath: 'https://your-cdn.example.com/assets/',
+    enableVersion: true,
+    enableCharacterTable: true,
+    enableAudio: true,
+});
+```
+
+`enableVersion` / `enableCharacterTable` only apply to the `url` (and `LE`) loader,
+and let a CDN serve assets with long max-age headers while still invalidating
+per asset. When off, no `?t=` query string is appended and neither manifest is
+requested.
+
+With `enableAudio` off, `AudioManager` resolves no sound events and fetches
+nothing — `audio: true` on `SpritePlayback.play()`, `saveToWebm()` and
+`saveAnimation()` simply produces silent output.
 
 The `LE` loader subclasses `url` — it points at the FastAPI server shipped in
 `live_extract.py`, which extracts the requested bone/skin from a local Dofus

@@ -44,7 +44,16 @@ const enum BundleFile {
     version= "version.json"
 }
 
-export interface DataConfig {
+export interface LoaderOptions {
+    /** Load `version.json` and append the global `?t=<BuildDate>` cache-buster to JSON requests. Default `false`. */
+    enableVersion?: boolean;
+    /** Load `Content/Characters/table.json` and append per-asset `?t=` cache-busters to bone/skin/animation requests. Default `false`. */
+    enableCharacterTable?: boolean;
+    /** Enable the audio library (`audio_manager.json` / `AudioManagerLibrary.asset`). When off, no sound event is resolved. Default `false`. */
+    enableAudio?: boolean;
+}
+
+export interface DataConfig extends LoaderOptions {
     strategy: 'url' | 'fs'|'LE';
     basePath: string;
     decodeImage?: ImageDecoder;
@@ -65,11 +74,17 @@ export abstract class DataLoader {
     protected readonly _base: string;
     protected readonly _decodeImage: ImageDecoder | undefined;
     protected readonly _imgExtension: string;
+    protected readonly _enableVersion: boolean;
+    protected readonly _enableCharacterTable: boolean;
+    protected readonly _enableAudio: boolean;
 
-    constructor(basePath: string, imgExtension:string="png",decodeImage?: ImageDecoder) {
+    constructor(basePath: string, imgExtension:string="png",decodeImage?: ImageDecoder, options: LoaderOptions = {}) {
         this._base = basePath.endsWith('/') ? basePath : `${basePath}/`;
         this._decodeImage = decodeImage;
         this._imgExtension = imgExtension;
+        this._enableVersion = options.enableVersion ?? false;
+        this._enableCharacterTable = options.enableCharacterTable ?? false;
+        this._enableAudio = options.enableAudio ?? false;
     }
 
     protected abstract bytes(path: string): Promise<Uint8Array>;
@@ -131,11 +146,18 @@ export abstract class DataLoader {
         return this.data(BundleFile.SoundBone)
     }
 
+    /** Whether the audio library may be loaded (`enableAudio`). */
+    get audioEnabled(): boolean {
+        return this._enableAudio;
+    }
+
     async loadAudioLib(): Promise<AudioManagerLibrary> {
+        if (!this._enableAudio) throw new Error("Audio is disabled. Pass enableAudio: true to configure().");
         return this.json(`${StreamingAssets.aa}/${BundleFile.audioLib}`)
     }
 
     async loadProcessedAudioLib(): Promise<Record<string, [string, number]>> {
+        if (!this._enableAudio) return {};
         return this.json(`${StreamingAssets.Audio}/${BundleFile.processedAudioLib}`)
     }
 
@@ -153,11 +175,14 @@ class UrlLoader extends DataLoader {
     private buildTime: number = 0;
     private tablesReady: Promise<void> = Promise.resolve();
 
-    constructor(basePath: string, imgExtension:string="png" , decodeImage?: ImageDecoder) {
-        super(basePath, imgExtension, decodeImage);
+    constructor(basePath: string, imgExtension:string="png" , decodeImage?: ImageDecoder, options: LoaderOptions = {}) {
+        super(basePath, imgExtension, decodeImage, options);
         this.cacheTable = {Bones: new Map(), Skins: new Map()};
         if (typeof window !== "undefined") {
-            this.tablesReady = Promise.all([this.setCache(), this.setBuildTime()]).then(() => {});
+            const tasks: Promise<void>[] = [];
+            if (this._enableCharacterTable) tasks.push(this.setCache());
+            if (this._enableVersion) tasks.push(this.setBuildTime());
+            if (tasks.length) this.tablesReady = Promise.all(tasks).then(() => {});
         }
 
     }
@@ -229,36 +254,42 @@ class UrlLoader extends DataLoader {
         return this.binary(`${StreamingAssets.Audio}/${event.soundPath}?t=${event.timestamp}`);
     }
 
-    protected async loadSkinWithCache(path: string, timestamp:number): Promise<SkinBundle> {
-        const firstImage = this.image(`${path}/0.${this._imgExtension}?t=${timestamp}`);
+    /** `?t=<timestamp>` suffix from the change table, or "" when the table is disabled. */
+    private stamp(kind: "Bones"|"Skins", key: string): string {
+        if (!this._enableCharacterTable) return "";
+        return `?t=${this.cacheTable[kind].get(key) ?? 0}`;
+    }
+
+    protected async loadSkinWithCache(path: string, stamp:string): Promise<SkinBundle> {
+        const firstImage = this.image(`${path}/0.${this._imgExtension}${stamp}`);
         firstImage.catch(() => {});
-        const skin = await this.json<SkinAsset>(`${path}/skin.json?t=${timestamp}`);
+        const skin = await this.json<SkinAsset>(`${path}/skin.json${stamp}`);
         if (skin.textures.length === 0) return {skin, images: []};
         const images: Promise<TextureSource>[] = [firstImage];
         for (let i = 1; i < skin.textures.length; i++) {
-            images.push(this.image(`${path}/${i}.${this._imgExtension}?t=${timestamp}`));
+            images.push(this.image(`${path}/${i}.${this._imgExtension}${stamp}`));
         }
         return {skin, images: await Promise.all(images)};
     }
 
     async loadAnimationData(boneName: string, animName: string, isMapAnimation?: boolean): Promise<ArrayBuffer> {
         await this.tablesReady;
-        const timestamp = this.cacheTable.Bones.get(boneName.toLowerCase()) ?? 0
-        return this.binary(`${isMapAnimation? StreamingAssets.Animations: StreamingAssets.Bones}/${boneName}/${animName}.dat?t=${timestamp}`);
+        const stamp = this.stamp("Bones", boneName.toLowerCase())
+        return this.binary(`${isMapAnimation? StreamingAssets.Animations: StreamingAssets.Bones}/${boneName}/${animName}.dat${stamp}`);
     }
 
     async loadSkin(skinId: number): Promise<SkinBundle> {
         await this.tablesReady;
-        const timestamp = this.cacheTable.Skins.get(String(skinId)) ?? 0
-        return this.loadSkinWithCache(`${StreamingAssets.Skins}/${skinId}`, timestamp);
+        const stamp = this.stamp("Skins", String(skinId))
+        return this.loadSkinWithCache(`${StreamingAssets.Skins}/${skinId}`, stamp);
     }
 
     async loadBone(boneName: string, isMapAnimation?: boolean): Promise<BoneBundle> {
         await this.tablesReady;
-        const timestamp = this.cacheTable.Bones.get(boneName.toLowerCase()) ?? 0
+        const stamp = this.stamp("Bones", boneName.toLowerCase())
         const folder = `${isMapAnimation? StreamingAssets.Animations: StreamingAssets.Bones}/${boneName}`
-        const skinPromise = this.loadSkinWithCache(folder, timestamp);
-        const bonePromise = this.json<AnimatedObjectDefinition>(`${folder}/bone.json?t=${timestamp}`);
+        const skinPromise = this.loadSkinWithCache(folder, stamp);
+        const bonePromise = this.json<AnimatedObjectDefinition>(`${folder}/bone.json${stamp}`);
         const [skin, bone] = await Promise.all([skinPromise, bonePromise])
         return {bone, skin};
     }
@@ -290,9 +321,9 @@ class FsLoader extends DataLoader {
 class LiveExtractLoader extends UrlLoader {
     private generated: Record<"Bones"|"Skins", Set<string>>;
     private readonly apiUrl: string;
-    constructor(basePath: string, imgExtension:string="png" , decodeImage?: ImageDecoder) {
+    constructor(basePath: string, imgExtension:string="png" , decodeImage?: ImageDecoder, options: LoaderOptions = {}) {
         const cleanPath = basePath.endsWith('/') ? basePath : `${basePath}/`;
-        super(`${cleanPath}static/Dofus_Data/StreamingAssets`, imgExtension, decodeImage);
+        super(`${cleanPath}static/Dofus_Data/StreamingAssets`, imgExtension, decodeImage, options);
         this.generated = {Bones: new Set(), Skins: new Set()};
         this.apiUrl = cleanPath;
     }
@@ -326,13 +357,18 @@ class LiveExtractLoader extends UrlLoader {
 }
 
 export function createDataLoader(config: DataConfig): DataLoader {
+    const options: LoaderOptions = {
+        enableVersion: config.enableVersion,
+        enableCharacterTable: config.enableCharacterTable,
+        enableAudio: config.enableAudio,
+    };
     switch (config.strategy) {
         case "url":
-            return new UrlLoader(config.basePath, config.ImageExtension, config.decodeImage);
+            return new UrlLoader(config.basePath, config.ImageExtension, config.decodeImage, options);
         case "fs":
-            return new FsLoader(config.basePath, config.ImageExtension, config.decodeImage);
+            return new FsLoader(config.basePath, config.ImageExtension, config.decodeImage, options);
         case "LE":
-            return new LiveExtractLoader(config.basePath, config.ImageExtension, config.decodeImage)
+            return new LiveExtractLoader(config.basePath, config.ImageExtension, config.decodeImage, options)
     }
 }
 

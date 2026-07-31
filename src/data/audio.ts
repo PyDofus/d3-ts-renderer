@@ -25,6 +25,7 @@ export class AudioManager {
 
     static async create(): Promise<AudioManager> {
         const loader = getLoader();
+        if (!loader.audioEnabled) return new AudioManager(new Map(), {});
         let audio_lib: Map<string, [string, number]>;
 
         try {

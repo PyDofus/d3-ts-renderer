@@ -7,7 +7,7 @@ export {Directions, oppositeDirection} from './data/directions';
 export {getAnimName, directionsByAnim} from './data/animation';
 
 export {configure, getLoader, createDataLoader, HttpError} from './data/loader';
-export type {DataLoader, DataConfig, ImageDecoder} from './data/loader';
+export type {DataLoader, DataConfig, LoaderOptions, ImageDecoder} from './data/loader';
 export type {TextureSource, RawImageData} from './data/types';
 
 export {DofusSprite, LookChange} from './renderer/dofusSprite';
