@@ -1,8 +1,28 @@
 {
   "name": "d3-ts-renderer",
   "version": "0.1.3",
+  "description": "TypeScript/WebGL renderer for Dofus sprites, in the browser or headless in Node.",
+  "keywords": [
+    "dofus",
+    "webgl",
+    "renderer",
+    "sprite",
+    "animation",
+    "headless"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/PyDofus/d3-ts-renderer.git"
+  },
+  "homepage": "https://github.com/PyDofus/d3-ts-renderer#readme",
+  "bugs": {
+    "url": "https://github.com/PyDofus/d3-ts-renderer/issues"
+  },
   "type": "module",
   "sideEffects": false,
+  "engines": {
+    "node": ">=18.17"
+  },
   "files": [
     "dist"
   ],
@@ -17,21 +37,24 @@
     "./node": {
       "types": "./dist/node.d.ts",
       "import": "./dist/node.js"
-    }
+    },
+    "./package.json": "./package.json"
   },
   "scripts": {
     "generate-fbs": "flatc --ts -o src/data/fbs/generated fbs/skin.fbs fbs/bone.fbs fbs/common.fbs",
     "prepare": "npm run build",
     "dev": "vite -c example/vite.config.ts",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.example.json",
     "build": "tsup",
-    "prepublishOnly": "npm run build",
+    "rebuild": "tsup --clean",
+    "prepublishOnly": "npm run rebuild",
     "liveExtract": "uv run fastapi run"
   },
   "devDependencies": {
     "@types/gl": "^6.0.5",
     "@types/node": "^25.6.0",
-    "@types/sharp": "^0.31.1",
+    "gl": "^8.1.6",
+    "sharp": "^0.35.3",
     "tsup": "^8.5.1",
     "tsx": "^4.21.0",
     "typescript": "^6.0.3",
@@ -42,7 +65,7 @@
   },
   "peerDependencies": {
     "gl": "^8.1.6",
-    "sharp": "^0.34.5"
+    "sharp": "^0.34.5 || ^0.35.0"
   },
   "peerDependenciesMeta": {
     "gl": {

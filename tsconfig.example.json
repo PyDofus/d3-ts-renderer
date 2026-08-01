@@ -1,0 +1,12 @@
+// Typecheck-only config covering the example harness, which the build tsconfig
+// (rootDir: src) can't include. Run as part of `npm run typecheck`.
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "rootDir": ".",
+    "noEmit": true,
+    "declaration": false,
+    "declarationMap": false
+  },
+  "include": ["src", "example"]
+}

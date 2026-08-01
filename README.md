@@ -38,6 +38,13 @@ await sprite.prepareAnimation('AnimStatique', 2, true);
 sprite.renderFrame(0);
 ```
 
+That drives `DofusSprite` directly, which is fine for a one-shot render. For
+anything interactive — playing an animation, or changing direction, scale or
+look — use [`SpritePlayback`](#animation-playback-browser) rather than calling
+`prepareAnimation` / `renderFrame` yourself. It owns the render loop, the canvas
+resizing and the ordering rules around look changes. Driving the sprite by hand
+while a loop is running is where most of the WebGL glitches come from.
+
 ### Node — headless rendering
 
 For headless Node rendering, install [`gl`](https://www.npmjs.com/package/gl) and
@@ -55,8 +62,8 @@ based image decoder. It also re-exports everything from the main entry, plus
 `saveAnimation` for ffmpeg-driven video/image export.
 
 ```ts
-import { configure, Look, DofusSprite } from 'd3-ts-renderer';
-import { decodeImage, createCanvas, saveToPng, saveAnimation } from 'd3-ts-renderer/node';
+import { Look, DofusSprite } from 'd3-ts-renderer';
+import { configure, decodeImage, createCanvas, saveToPng, saveAnimation } from 'd3-ts-renderer/node';
 
 configure({
     strategy: 'fs',
@@ -70,7 +77,7 @@ const sprite = await DofusSprite.create(
     canvas,
     { numberFrame: 1 },
 );
-await sprite.prepareAnimation('AnimStatiqueExplo0_1', 2, true);
+await sprite.prepareAnimation('AnimStatiqueExplo0_1', 2, true, false, true); //  flipY to get image in the correct orientation
 sprite.renderFrame(0);
 await saveToPng(canvas, 'test.png');
 ```
@@ -126,6 +133,11 @@ await playback.replaceLook(newLook);
 // reuse the active sprite if there is one, otherwise build a fresh one
 await playback.renderLook(newLook, () => DofusSprite.create(newLook, canvas));
 ```
+
+Don't change the sprite's look yourself — use `renderLook`.
+
+Colours are the exception: they go straight to the shader, so nothing has to be
+rebuilt or re-fetched. Set them on the look directly.
 
 ### Capturing the playing sprite
 
@@ -215,11 +227,22 @@ both contexts.
 | strategy | description                                                                                              | runtime       |
 |----------|----------------------------------------------------------------------------------------------------------|---------------|
 | `url`    | `fetch()` assets from `basePath`                                                                         | browser, node |
-| `fs`     | `node:fs/promises` reads assets from `basePath`                                                          | node          |
+| `fs`     | `node:fs/promises` reads assets from `basePath` — only supported by the `d3-ts-renderer/node` entry      | node          |
 | `LE`     | live extract — fetch from the local FastAPI dev server, which extracts bones/skins on demand (dev only)  | browser, node |
 
 Config accepts a `decodeImage: (bytes, path) => TextureSource` hook for Node
 runtimes where `createImageBitmap` isn't available.
+
+The browser entry (`d3-ts-renderer`) contains **no Node builtins**, so bundlers
+never have to externalize `fs`/`path`. In Node, import `configure` from `d3-ts-renderer/node`, not from
+`d3-ts-renderer`.
+
+Custom loaders don't need a strategy at all — build one and install it directly:
+
+```ts
+import { setLoader } from 'd3-ts-renderer';
+setLoader(new MyLoader(basePath));
+```
 
 ### Optional features
 
