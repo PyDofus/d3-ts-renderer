@@ -1,5 +1,4 @@
-import { configure, Look, DofusSprite, type DataConfig } from '../src';
-import { decodeImage, createCanvas, saveToPng} from '../src/headless/export';
+import { configure, Look, DofusSprite, decodeImage, createCanvas, saveToPng, type DataConfig } from '../src/headless';
 
 const config: DataConfig = {strategy: 'url', basePath: 'https://cdn.example.com/assets/', decodeImage}
 // or

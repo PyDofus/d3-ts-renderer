@@ -9,9 +9,6 @@ import type {ExportFormat, HwAccel} from "./ffmpeg"
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
-export * from '../index';
-
-
 export const decodeImage: ImageDecoder = async (bytes) => {
     const { data, info } = await sharp(bytes).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
     return { data: new Uint8ClampedArray(data), width: info.width, height: info.height };

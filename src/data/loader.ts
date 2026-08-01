@@ -296,28 +296,6 @@ class UrlLoader extends DataLoader {
 
 }
 
-class FsLoader extends DataLoader {
-    protected async bytes(path: string): Promise<Uint8Array> {
-        const {readFile} = await import('node:fs/promises');
-        return readFile(this._base + path);
-    }
-
-    protected async json<T>(path: string): Promise<T> {
-        const buf = await this.bytes(path);
-        return JSON.parse(new TextDecoder().decode(buf));
-    }
-
-    protected async binary(path: string): Promise<ArrayBuffer> {
-        const buf = await this.bytes(path);
-        return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer;
-    }
-
-    protected async imageBitmap(path: string): Promise<ImageBitmap> {
-        throw new Error("FsLoader cannot decode ImageBitmap in Node. Provide decodeImage in config or DataLoader constructor.");
-    }
-
-}
-
 class LiveExtractLoader extends UrlLoader {
     private generated: Record<"Bones"|"Skins", Set<string>>;
     private readonly apiUrl: string;
@@ -356,27 +334,35 @@ class LiveExtractLoader extends UrlLoader {
 
 }
 
-export function createDataLoader(config: DataConfig): DataLoader {
-    const options: LoaderOptions = {
+export function toLoaderOptions(config: DataConfig): LoaderOptions {
+    return {
         enableVersion: config.enableVersion,
         enableCharacterTable: config.enableCharacterTable,
         enableAudio: config.enableAudio,
     };
+}
+
+export function createDataLoader(config: DataConfig): DataLoader {
+    const options = toLoaderOptions(config);
     switch (config.strategy) {
         case "url":
             return new UrlLoader(config.basePath, config.ImageExtension, config.decodeImage, options);
-        case "fs":
-            return new FsLoader(config.basePath, config.ImageExtension, config.decodeImage, options);
         case "LE":
             return new LiveExtractLoader(config.basePath, config.ImageExtension, config.decodeImage, options)
+        default:
+            throw new Error(`Unknown loader strategy "${config.strategy}". The "fs" strategy is Node-only: import configure/createDataLoader from 'd3-ts-renderer/node' instead of 'd3-ts-renderer'.`);
     }
 }
 
 let _loader: DataLoader | undefined;
 
+export function setLoader(loader: DataLoader): DataLoader {
+    _loader = loader;
+    return loader;
+}
+
 export function configure(config: DataConfig): DataLoader {
-    _loader = createDataLoader(config);
-    return _loader;
+    return setLoader(createDataLoader(config));
 }
 
 export function getLoader(): DataLoader {
