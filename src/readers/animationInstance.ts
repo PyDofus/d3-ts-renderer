@@ -38,6 +38,10 @@ export class AnimationInstance {
         this._renderStates = Array.from({length: this.nodeCount}, () => new RenderState());
     }
 
+    get renderStates(): readonly RenderState[] {
+        return this._renderStates;
+    }
+
     /** Yields frame indices, advancing internal render-state cursors as a side effect. */
     * iterFrameData(maxFrame?: number, startFrame = 0): Iterable<number> {
         this._claimRenderStates();

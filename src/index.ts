@@ -12,6 +12,11 @@ export type {TextureSource, RawImageData} from './data/types';
 
 export {DofusSprite, LookChange} from './renderer/dofusSprite';
 
+export {getAnimation} from './data/boneLoader';
+export type {AnimationInstance, AnimationLabel} from './readers/animationInstance';
+export type {RenderState} from './readers/renderState';
+export type {Animation, Rectf} from './data/types';
+
 export {SpriteAudioPlayer} from './browser/audio';
 export {getAudioManager, AudioManager} from './data/audio';
 export type {SoundEvent} from './data/audio';
