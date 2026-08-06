@@ -274,7 +274,7 @@ class UrlLoader extends DataLoader {
 
     async loadAnimationData(boneName: string, animName: string, isMapAnimation?: boolean): Promise<ArrayBuffer> {
         await this.tablesReady;
-        const stamp = this.stamp("Bones", boneName.toLowerCase())
+        const stamp = this.stamp("Bones", boneName)
         return this.binary(`${isMapAnimation? StreamingAssets.Animations: StreamingAssets.Bones}/${boneName}/${animName}.dat${stamp}`);
     }
 
@@ -286,7 +286,7 @@ class UrlLoader extends DataLoader {
 
     async loadBone(boneName: string, isMapAnimation?: boolean): Promise<BoneBundle> {
         await this.tablesReady;
-        const stamp = this.stamp("Bones", boneName.toLowerCase())
+        const stamp = this.stamp("Bones", boneName)
         const folder = `${isMapAnimation? StreamingAssets.Animations: StreamingAssets.Bones}/${boneName}`
         const skinPromise = this.loadSkinWithCache(folder, stamp);
         const bonePromise = this.json<AnimatedObjectDefinition>(`${folder}/bone.json${stamp}`);
