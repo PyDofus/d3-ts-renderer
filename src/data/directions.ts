@@ -30,7 +30,7 @@ export function flipAnimName(animName: string, d: Directions): string {
 }
 
 export function flipAnimNameString(animName: string): string {
-    const idx = animName.indexOf('_');
+    const idx = animName.lastIndexOf('_');
     if (idx === -1) return animName;
 
     const name = animName.slice(0, idx);
