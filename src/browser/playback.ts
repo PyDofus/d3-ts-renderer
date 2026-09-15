@@ -262,7 +262,6 @@ export class SpritePlayback {
                 animName: `${this._baseAnimName}_${this._direction}`,
                 scale: this._scale,
                 forcedSize: this._forcedSize,
-                flip: this._flip,
                 filename,
                 ...overrides,
             });
@@ -281,7 +280,6 @@ export class SpritePlayback {
                 animName: `${this._baseAnimName}_${this._direction}`,
                 scale: this._scale,
                 forcedSize: this._forcedSize,
-                flip: this._flip,
                 audioPlayer: this._audioPlayer ?? undefined,
                 filename,
                 ...overrides,
