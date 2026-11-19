@@ -63,6 +63,18 @@ export class Look {
         this.flatColorArray[index * 3 + 2] = value[2];
     }
 
+    setColors(map: Map<number, RGB>): void {
+        if (map === this.color) return;
+        this.color.clear();
+        for (const [i, c] of map) this.color.set(i, c);
+        this.writeFlat();
+    }
+
+    mergeColors(map: Map<number, RGB>): void {
+        for (const [i, c] of map) this.color.set(i, c);
+        this.writeFlat();
+    }
+
     private writeFlat(): void {
         for (let i = 0; i < 16; i++) {
             const c = this.color.get(i) ?? [1, 1, 1];
