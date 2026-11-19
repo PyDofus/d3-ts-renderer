@@ -1,7 +1,7 @@
 export {Look, type LookDict} from './look/look';
 export {SubEntityCategory} from './look/enums';
 export type {RGB} from './look/colorUtilities';
-export {intToRgb, rgbToInt, indexedColorsToDict, mergeIndexedColors, indexedColorIndices, riderToMountIndex} from './look/colorUtilities';
+export {intToRgb, rgbToInt, indexedColorsToDict, mergeIndexedColors, indexedColorIndices, riderToMountIndex, parseLookStringColor} from './look/colorUtilities';
 
 export {Directions, oppositeDirection} from './data/directions';
 export {getAnimName, directionsByAnim} from './data/animation';
