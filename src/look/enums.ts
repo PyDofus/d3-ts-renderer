@@ -13,6 +13,7 @@ export const SubEntityCategory = {
   CATEGORY_12: 12,
   CATEGORY_13: 13,
   CATEGORY_14: 14,
+  CATEGORY_15: 15,
 } as const;
 
 export type SubEntityCategory = typeof SubEntityCategory[keyof typeof SubEntityCategory];
